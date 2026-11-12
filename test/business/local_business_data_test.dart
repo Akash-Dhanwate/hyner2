@@ -376,6 +376,7 @@ void main() {
           'CREATE INDEX movements_product_date ON movements(sku, createdAt DESC, id DESC)',
         );
         if (version == 1) {
+          await oldDb.execute('DROP INDEX IF EXISTS sales_followup_due');
           for (final table in [
             'suppliers',
             'purchases',
@@ -408,7 +409,7 @@ void main() {
         await oldDb.setVersion(version);
         await oldDb.close();
         final upgraded = await store.databaseFor('alice');
-        expect(await upgraded.getVersion(), 11);
+        expect(await upgraded.getVersion(), 12);
         expect((await inventory.get('alice', 'A')).quantity, 9);
         expect((await sales.get('alice', 'old')).draft.firstPaymentMinor, 100);
         expect(await upgraded.query('movements'), hasLength(2));

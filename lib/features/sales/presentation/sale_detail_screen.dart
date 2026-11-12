@@ -14,6 +14,7 @@ import '../../reports/presentation/reports_controller.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../customers/presentation/customers_controller.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
@@ -24,6 +25,7 @@ import '../domain/sale.dart';
 import '../data/bill_pdf_service.dart';
 import '../data/bill_pdf_actions.dart';
 import 'sales_controller.dart';
+import 'bill_contact_dialog.dart';
 
 class SaleDetailScreen extends ConsumerWidget {
   const SaleDetailScreen({super.key, required this.id});
@@ -52,7 +54,7 @@ class SaleDetailScreen extends ConsumerWidget {
                   );
           return _SaleDetail(
             key: ValueKey(
-              '${sale.id}/${sale.paidMinor}/${sale.expectedPaymentMinor}',
+              '${ref.watch(inventoryUidProvider)}/${sale.id}/${sale.paidMinor}/${sale.expectedPaymentMinor}',
             ),
             sale: sale,
             whatsappOptIn: whatsappOptIn,
@@ -82,7 +84,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
   bool _savingFollowUp = false;
   int _followUpDays = 5;
   AppFailure? _failure;
-  Uint8List? _duplicate;
+  final _branding = BillBrandingCache();
   String? _archiveError;
   bool _documentBusy = false;
 
@@ -96,28 +98,26 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     unawaited(_archiveDuplicate());
   }
 
-  Future<void> _archiveDuplicate() async {
+  Future<void> _archiveDuplicate({bool verify = false}) async {
     final repository = ref.read(dependenciesProvider).billDocuments;
     final uid = ref.read(inventoryUidProvider);
     if (repository == null || uid == null) return;
     try {
-      var bytes = await repository.duplicate(uid, sale.id);
-      if (bytes == null) {
-        final settings = await ref.read(paymentSettingsProvider.future);
-        bytes = await BillPdfService.build(
-          sale: sale,
-          settings: settings,
+      final settings = ref.read(paymentSettingsProvider.future);
+      final capturedSale = sale;
+      await repository.ensureDuplicate(
+        uid,
+        capturedSale.id,
+        () async => BillPdfService.build(
+          sale: capturedSale,
+          settings: await settings,
           copy: BillCopy.duplicate,
-        );
-        if (!mounted || ref.read(inventoryUidProvider) != uid) return;
-        await repository.saveDuplicate(uid, sale.id, bytes);
-        bytes = await repository.duplicate(uid, sale.id);
-      }
+          brandingCache: _branding,
+        ),
+      );
+      if (verify) await repository.duplicate(uid, capturedSale.id);
       if (mounted && ref.read(inventoryUidProvider) == uid) {
-        setState(() {
-          _duplicate = bytes;
-          _archiveError = null;
-        });
+        setState(() => _archiveError = null);
       }
     } catch (_) {
       if (mounted && ref.read(inventoryUidProvider) == uid) {
@@ -147,6 +147,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
 
   @override
   void dispose() {
+    _branding.clear();
     _amount.dispose();
     super.dispose();
   }
@@ -215,6 +216,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
       );
       ref.invalidate(saleProvider(sale.id));
       ref.invalidate(remainingPaymentsProvider);
+      ref.invalidate(recentSalesProvider);
       ref.invalidate(customerSalesProvider);
       ref.invalidate(businessReportProvider);
       ref.invalidate(scheduledFollowUpsProvider);
@@ -296,6 +298,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
             sale: sale,
             settings: settings,
             copy: BillCopy.original,
+            brandingCache: _branding,
           );
         },
       );
@@ -321,6 +324,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         sale: sale,
         settings: settings,
         copy: BillCopy.original,
+        brandingCache: _branding,
       );
       if (!_documentCurrent(uid)) return;
       await BillPdfActions.shareWhatsApp(
@@ -346,18 +350,61 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     if (_documentBusy || uid == null) return;
     setState(() => _documentBusy = true);
     try {
-      final bytes = duplicate
-          ? (_duplicate ??
-                await BillPdfService.build(
-                  sale: sale,
-                  settings: settings,
-                  copy: BillCopy.duplicate,
-                ))
-          : await BillPdfService.build(
-              sale: sale,
-              settings: settings,
-              copy: BillCopy.original,
+      final Uint8List bytes;
+      if (duplicate) {
+        final repository = ref.read(dependenciesProvider).billDocuments;
+        if (repository == null) {
+          bytes = await BillPdfService.build(
+            sale: sale,
+            settings: settings,
+            copy: BillCopy.duplicate,
+            brandingCache: _branding,
+          );
+        } else {
+          final capturedSale = sale;
+          Uint8List? archived;
+          try {
+            await repository.ensureDuplicate(
+              uid,
+              sale.id,
+              () => BillPdfService.build(
+                sale: capturedSale,
+                settings: settings,
+                copy: BillCopy.duplicate,
+                brandingCache: _branding,
+              ),
             );
+            if (!_documentCurrent(uid)) return;
+            archived = await repository.duplicate(uid, sale.id);
+            if (archived == null) {
+              throw StateError('The archived duplicate is unavailable.');
+            }
+          } catch (_) {
+            if (!_documentCurrent(uid)) return;
+            // Preserve the earlier fallback export without replacing a damaged
+            // immutable archive. Tell the owner this copy was rebuilt.
+            setState(
+              () => _archiveError = 'The archived duplicate could not be read. This export is rebuilt from the saved bill; the archive has not been replaced.',
+            );
+            archived = null;
+          }
+          bytes =
+              archived ??
+              await BillPdfService.build(
+                sale: capturedSale,
+                settings: settings,
+                copy: BillCopy.duplicate,
+                brandingCache: _branding,
+              );
+        }
+      } else {
+        bytes = await BillPdfService.build(
+          sale: sale,
+          settings: settings,
+          copy: BillCopy.original,
+          brandingCache: _branding,
+        );
+      }
       if (!_documentCurrent(uid)) return;
       final saved = await BillPdfActions.save(
         bytes,
@@ -383,6 +430,30 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     }
   }
 
+  Future<void> _editContact() async {
+    final uid = ref.read(inventoryUidProvider);
+    if (uid == null || !sale.canEditContactAt(DateTime.now())) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => BillContactDialog(sale: sale, uid: uid),
+    );
+    if (changed == true && mounted && ref.read(inventoryUidProvider) == uid) {
+      ref.invalidate(saleProvider(sale.id));
+      ref.invalidate(recentSalesProvider);
+      ref.invalidate(customerSalesProvider);
+      ref.invalidate(businessReportProvider);
+      unawaited(ref.read(salesProvider.notifier).refresh());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Bill customer details updated. Amount and reference are unchanged.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -392,21 +463,38 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         const Eyebrow('Saved sale'),
         const SizedBox(height: 12),
         Text(
-          formatMoney(sale.draft.totalMinor, sale.draft.currency),
+          sale.draft.customerName?.trim().isNotEmpty == true
+              ? sale.draft.customerName!
+              : 'Walk-in customer',
+          key: const Key('bill-customer-heading'),
           style: theme.textTheme.headlineMedium,
         ),
-        const SizedBox(height: 12),
-        Text(saleDate(sale.createdAt)),
+        if (sale.draft.customerPhone?.isNotEmpty == true)
+          SelectableText('Phone · ${sale.draft.customerPhone!}'),
+        if (sale.draft.customerAddress?.isNotEmpty == true)
+          SelectableText(sale.draft.customerAddress!),
         const SizedBox(height: 8),
-        SelectableText('Reference: ${sale.id}'),
-        if (sale.draft.customerName != null) ...[
-          const SizedBox(height: 8),
-          Text('Customer · ${sale.draft.customerName}'),
-          if (sale.draft.customerPhone?.isNotEmpty == true)
-            SelectableText('Phone · ${sale.draft.customerPhone!}'),
-          if (sale.draft.customerAddress?.isNotEmpty == true)
-            SelectableText(sale.draft.customerAddress!),
-        ],
+        Text(saleDate(sale.createdAt), style: theme.textTheme.bodySmall),
+        SelectableText(
+          'Reference: ${sale.id}',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (sale.canEditContactAt(DateTime.now()))
+          TextButton.icon(
+            key: const Key('edit-bill-contact'),
+            onPressed: _saving || _documentBusy ? null : _editContact,
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit customer details'),
+          )
+        else
+          const DetailHint(
+            'Customer name and mobile can be corrected only within seven days of bill creation. The reference and amounts cannot be edited.',
+            title: 'Contact edit window',
+          ),
+        RecordFact(
+          label: 'Bill total',
+          value: formatMoney(sale.draft.totalMinor, sale.draft.currency),
+        ),
         if (sale.draft.customerId != null)
           TextButton.icon(
             onPressed: () => context.push<void>(
@@ -438,18 +526,24 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         const SizedBox(height: 18),
         if (sale.payments.isNotEmpty) ...[
           const SizedBox(height: 24),
-          Text('Payment history', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
-          for (final payment in sale.payments)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(child: Text(saleDate(payment.createdAt))),
-                  Text(formatMoney(payment.amountMinor, sale.draft.currency)),
-                ],
-              ),
-            ),
+          DisclosureSection(
+            title: 'Payment history',
+            children: [
+              const SizedBox(height: 8),
+              for (final payment in sale.payments)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(saleDate(payment.createdAt))),
+                      Text(
+                        formatMoney(payment.amountMinor, sale.draft.currency),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ],
         if (sale.paidAt != null &&
             sale.paymentStatus == PaymentStatus.paid) ...[
@@ -513,61 +607,68 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
           if (sale.draft.customerId != null &&
               sale.draft.customerPhone?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 22),
-            Text('Payment reminder', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            if (!whatsappOptIn)
-              const DetailHint(
-                'Enable WhatsApp updates from More → WhatsApp updates before scheduling a reminder.',
-              )
-            else ...[
-              if (sale.followupAt != null) ...[
-                InlineNotice(
-                  'WhatsApp draft reminder scheduled for ${saleDate(sale.followupAt!)}.',
-                ),
+            DisclosureSection(
+              title: 'Payment reminder',
+              summary: sale.followupAt == null
+                  ? 'Optional WhatsApp follow-up'
+                  : 'Scheduled for ${saleDate(sale.followupAt!)}',
+              children: [
                 const SizedBox(height: 8),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _followUpDays,
-                      decoration: const InputDecoration(
-                        labelText: 'Remind after',
+                if (!whatsappOptIn)
+                  const DetailHint(
+                    'Enable WhatsApp updates from More → WhatsApp updates before scheduling a reminder.',
+                  )
+                else ...[
+                  if (sale.followupAt != null) ...[
+                    InlineNotice(
+                      'WhatsApp draft reminder scheduled for ${saleDate(sale.followupAt!)}.',
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _followUpDays,
+                          decoration: const InputDecoration(
+                            labelText: 'Remind after',
+                          ),
+                          items: const [5, 10, 12]
+                              .map(
+                                (days) => DropdownMenuItem(
+                                  value: days,
+                                  child: Text('$days days'),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _savingFollowUp
+                              ? null
+                              : (value) =>
+                                    setState(() => _followUpDays = value ?? 5),
+                        ),
                       ),
-                      items: const [5, 10, 12]
-                          .map(
-                            (days) => DropdownMenuItem(
-                              value: days,
-                              child: Text('$days days'),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _savingFollowUp
-                          ? null
-                          : (value) =>
-                                setState(() => _followUpDays = value ?? 5),
-                    ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: _savingFollowUp ? null : _scheduleFollowUp,
+                        child: Text(
+                          sale.followupAt == null ? 'Schedule' : 'Reschedule',
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  FilledButton(
-                    onPressed: _savingFollowUp ? null : _scheduleFollowUp,
-                    child: Text(
-                      sale.followupAt == null ? 'Schedule' : 'Reschedule',
+                  if (sale.followupAt != null)
+                    TextButton.icon(
+                      onPressed: _savingFollowUp ? null : _removeFollowUp,
+                      icon: const Icon(Icons.close_rounded),
+                      label: const Text('Remove reminder'),
                     ),
+                  const SizedBox(height: 4),
+                  const DetailHint(
+                    'This adds the bill to the WhatsApp follow-up queue on that date. You still open the draft and send it manually.',
                   ),
                 ],
-              ),
-              if (sale.followupAt != null)
-                TextButton.icon(
-                  onPressed: _savingFollowUp ? null : _removeFollowUp,
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Remove reminder'),
-                ),
-              const SizedBox(height: 4),
-              const DetailHint(
-                'This adds the bill to the WhatsApp follow-up queue on that date. You still open the draft and send it manually.',
-              ),
-            ],
+              ],
+            ),
           ],
         ],
         const SizedBox(height: 24),
@@ -610,17 +711,26 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
                     icon: const Icon(Icons.download_outlined),
                     label: const Text('Save PDF'),
                   ),
-                  TextButton.icon(
-                    onPressed: _documentBusy
-                        ? null
-                        : () => _savePdf(settings, duplicate: true),
-                    icon: const Icon(Icons.copy_outlined),
-                    label: const Text('Save duplicate PDF'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => context.push<void>('/bill-settings'),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Bill appearance'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: DisclosureSection(
+                      title: 'More document options',
+                      summary: 'Duplicate copy and bill appearance',
+                      children: [
+                        TextButton.icon(
+                          onPressed: _documentBusy
+                              ? null
+                              : () => _savePdf(settings, duplicate: true),
+                          icon: const Icon(Icons.copy_outlined),
+                          label: const Text('Save duplicate PDF'),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => context.push<void>('/bill-settings'),
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Bill appearance'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -628,7 +738,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         if (_archiveError != null) ...[
           InlineNotice(_archiveError!, isError: true),
           TextButton(
-            onPressed: _archiveDuplicate,
+            onPressed: () => _archiveDuplicate(verify: true),
             child: const Text('Retry duplicate archive'),
           ),
         ],
@@ -681,18 +791,8 @@ class _MoneyFact extends StatelessWidget {
   final String currency;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      children: [
-        Expanded(child: Text(label)),
-        Text(
-          formatMoney(amount, currency),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) =>
+      RecordFact(label: label, value: formatMoney(amount, currency));
 }
 
 class _PaymentQr extends ConsumerWidget {
@@ -706,13 +806,19 @@ class _PaymentQr extends ConsumerWidget {
     if (sale.draft.currency != 'INR') {
       return const Padding(
         padding: EdgeInsets.only(top: 20),
-        child: InlineNotice('UPI amount QR is available for INR bills.'),
+        child: DetailHint(
+          'UPI amount QR is available for INR bills.',
+          title: 'UPI QR',
+        ),
       );
     }
     if (amountMinor < 1) {
       return const Padding(
         padding: EdgeInsets.only(top: 20),
-        child: InlineNotice('Enter a valid payment amount to show its QR.'),
+        child: DetailHint(
+          'Enter a valid payment amount to show its QR.',
+          title: 'Payment amount',
+        ),
       );
     }
     return settings.when(
@@ -720,31 +826,23 @@ class _PaymentQr extends ConsumerWidget {
         padding: EdgeInsets.only(top: 20),
         child: LinearProgressIndicator(),
       ),
-      error: (_, _) => const InlineNotice(
+      error: (_, _) => DetailHint(
         'UPI settings could not be loaded.',
-        isError: true,
+        title: 'UPI setup',
+        actionLabel: 'Retry',
+        onAction: () => ref.invalidate(paymentSettingsProvider),
       ),
       data: (value) {
         final uri = value.upiUri(sale, amountMinor: amountMinor);
         if (uri == null) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const InlineNotice(
-                  'Add your UPI ID and business name in Settings to show a QR for this payment amount.',
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => context.push<void>('/settings'),
-                  icon: const Icon(Icons.tune_rounded),
-                  label: const Text('Set up UPI QR'),
-                ),
-              ],
-            ),
+          return DetailHint(
+            'Add your UPI ID and business name in Settings to show a QR for this payment amount.',
+            title: 'UPI setup',
+            actionLabel: 'Open payment settings',
+            onAction: () => context.push<void>('/settings'),
           );
         }
+
         return Padding(
           padding: const EdgeInsets.only(top: 20),
           child: Column(
@@ -755,8 +853,9 @@ class _PaymentQr extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Customer scans with PhonePe, Google Pay, or another UPI app. The amount is prefilled; the owner verifies payment in their own UPI app.',
+              const DetailHint(
+                'Customer scans with a UPI app. The owner checks the received payment before recording it.',
+                title: 'Verify payment',
               ),
               const SizedBox(height: 16),
               Center(

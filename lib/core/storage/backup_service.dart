@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'local_business_database.dart';
+import 'generated_backup_files.dart';
 
 class BackupService {
   BackupService._();
@@ -13,18 +14,24 @@ class BackupService {
   static Future<void> exportAndShare(String uid) async {
     final snapshot = await LocalBusinessDatabase.instance.exportFor(uid);
     final directory = await getTemporaryDirectory();
+    await GeneratedBackupFiles.cleanOccasionally(directory);
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
     final file = File('${directory.path}/hyner-backup-$stamp.json');
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(snapshot),
-      flush: true,
-    );
-    await SharePlus.instance.share(
-      ShareParams(
-        text: 'Hyner local business backup',
-        files: [XFile(file.path, mimeType: 'application/json')],
-      ),
-    );
+    GeneratedBackupFiles.protect(file);
+    try {
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(snapshot),
+        flush: true,
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'Hyner local business backup',
+          files: [XFile(file.path, mimeType: 'application/json')],
+        ),
+      );
+    } finally {
+      GeneratedBackupFiles.release(file);
+    }
   }
 
   static Future<bool> pickAndRestore(String uid) async {

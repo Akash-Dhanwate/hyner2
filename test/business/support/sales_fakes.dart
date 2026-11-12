@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:hyner/core/errors/app_failure.dart';
 import 'package:hyner/features/inventory/domain/product.dart';
 import 'package:hyner/features/sales/domain/sale.dart';
+import 'package:hyner/features/sales/domain/sale_search.dart';
 import 'package:hyner/features/sales/domain/sales_repository.dart';
 
 import 'inventory_fakes.dart';
@@ -21,7 +22,11 @@ class FakeSales implements SalesRepository {
   @override
   String newSaleId() => 'sale${++ids}';
   @override
-  Future<SalesPage> list(String uid, {SalesCursor? after}) async {
+  Future<SalesPage> list(
+    String uid, {
+    SalesCursor? after,
+    String search = '',
+  }) async {
     requestedUids.add(uid);
     if (pendingList != null) return pendingList!.future;
     if (failure != null) throw failure!;
@@ -31,6 +36,7 @@ class FakeSales implements SalesRepository {
         return date == 0 ? b.id.compareTo(a.id) : date;
       });
     final remaining = values
+        .where(SaleSearch(search).matches)
         .where(
           (s) =>
               after == null ||
@@ -44,6 +50,47 @@ class FakeSales implements SalesRepository {
       remaining.length > pageSize
           ? SalesCursor(page.last.createdAt, page.last.id)
           : null,
+    );
+  }
+
+  @override
+  Future<void> updateContact(
+    String uid,
+    String id, {
+    required String name,
+    required String phone,
+    required String? expectedName,
+    required String? expectedPhone,
+  }) async {
+    final prior = await get(uid, id);
+    if (!prior.canEditContactAt(DateTime.now())) {
+      throw inventoryInvalid(
+        'Customer details are locked seven days after bill creation.',
+      );
+    }
+    if (prior.draft.customerName != expectedName ||
+        prior.draft.customerPhone != expectedPhone) {
+      throw inventoryInvalid('Reload this bill before editing.');
+    }
+    final d = prior.draft;
+    sales(uid)[id] = Sale(
+      id: prior.id,
+      createdAt: prior.createdAt,
+      draft: SaleDraft(
+        currency: d.currency,
+        lines: d.lines,
+        customerId: d.customerId,
+        customerName: name,
+        customerPhone: phone,
+        customerAddress: d.customerAddress,
+        initialPaymentMinor: d.initialPaymentMinor,
+      ),
+      paymentStatus: prior.paymentStatus,
+      paidAt: prior.paidAt,
+      paidMinor: prior.paidMinor,
+      expectedPaymentMinor: prior.expectedPaymentMinor,
+      payments: prior.payments,
+      followupAt: prior.followupAt,
     );
   }
 

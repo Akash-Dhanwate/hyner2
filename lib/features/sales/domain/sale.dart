@@ -233,6 +233,12 @@ class Sale {
   final int expectedPaymentMinor;
   final List<PaymentEntry> payments;
   final DateTime? followupAt;
+  DateTime get contactEditDeadline =>
+      createdAt.toUtc().add(const Duration(days: 7));
+  bool canEditContactAt(DateTime now) =>
+      !now.toUtc().isBefore(createdAt.toUtc()) &&
+      now.toUtc().isBefore(contactEditDeadline);
+
   int get remainingMinor {
     final balance = draft.totalMinor - paidMinor;
     if (balance < 0) return 0;

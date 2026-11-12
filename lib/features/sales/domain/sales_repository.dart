@@ -14,7 +14,15 @@ class SalesPage {
 
 abstract interface class SalesRepository {
   String newSaleId();
-  Future<SalesPage> list(String uid, {SalesCursor? after});
+  Future<SalesPage> list(String uid, {SalesCursor? after, String search = ''});
+  Future<void> updateContact(
+    String uid,
+    String id, {
+    required String name,
+    required String phone,
+    required String? expectedName,
+    required String? expectedPhone,
+  });
   Future<List<Sale>> forCustomer(String uid, String customerId);
   Future<Sale> get(String uid, String id);
   Future<void> create(String uid, String id, SaleDraft draft);

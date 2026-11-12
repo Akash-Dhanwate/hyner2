@@ -22,7 +22,9 @@ class SalesState {
     this.loading = false,
     this.loadingMore = false,
     this.failure,
+    this.search = '',
   });
+  final String search;
   final List<Sale> sales;
   final SalesCursor? next;
   final bool loading, loadingMore;
@@ -47,19 +49,22 @@ class SalesController extends Notifier<SalesState> {
 
   bool _current(String uid, int generation) =>
       ref.mounted && _uid == uid && generation == _generation;
-  Future<void> refresh() async {
+  Future<void> refresh({String? search}) async {
     final uid = _uid;
     if (uid == null) return;
     final generation = ++_generation;
-    state = const SalesState(loading: true);
+    final query = search ?? state.search;
+    state = SalesState(loading: true, search: query);
     try {
-      final page = await ref.read(salesRepositoryProvider).list(uid);
+      final page = await ref
+          .read(salesRepositoryProvider)
+          .list(uid, search: query);
       if (_current(uid, generation)) {
-        state = SalesState(sales: page.sales, next: page.next);
+        state = SalesState(sales: page.sales, next: page.next, search: query);
       }
     } catch (error) {
       if (_current(uid, generation)) {
-        state = SalesState(failure: AppFailure.from(error));
+        state = SalesState(failure: AppFailure.from(error), search: query);
       }
     }
   }
@@ -75,6 +80,7 @@ class SalesController extends Notifier<SalesState> {
     }
     final generation = _generation;
     state = SalesState(
+      search: previous.search,
       sales: previous.sales,
       next: previous.next,
       loadingMore: true,
@@ -82,9 +88,10 @@ class SalesController extends Notifier<SalesState> {
     try {
       final page = await ref
           .read(salesRepositoryProvider)
-          .list(uid, after: previous.next);
+          .list(uid, after: previous.next, search: previous.search);
       if (!_current(uid, generation)) return;
       state = SalesState(
+        search: previous.search,
         sales: {
           for (final sale in previous.sales) sale.id: sale,
           for (final sale in page.sales) sale.id: sale,
@@ -94,6 +101,7 @@ class SalesController extends Notifier<SalesState> {
     } catch (error) {
       if (_current(uid, generation)) {
         state = SalesState(
+          search: previous.search,
           sales: previous.sales,
           next: previous.next,
           failure: AppFailure.from(error),
@@ -136,4 +144,12 @@ final scheduledFollowUpsProvider = FutureProvider.autoDispose<List<Sale>>((
     );
   }
   return ref.watch(salesRepositoryProvider).scheduledFollowUps(uid);
+});
+
+/// Recent bills have independent state from the history search.
+final recentSalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
+  final uid = ref.watch(inventoryUidProvider);
+  if (uid == null) return [];
+  final page = await ref.watch(salesRepositoryProvider).list(uid);
+  return page.sales.take(3).toList();
 });

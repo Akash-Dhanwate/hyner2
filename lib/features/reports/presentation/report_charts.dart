@@ -3,10 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../domain/business_report.dart';
+import '../../../core/widgets/workspace_components.dart';
 
-const salesChartColor = Color(0xff087e8b);
-const expenseChartColor = Color(0xffe58a45);
-const dueChartColor = Color(0xffd3a13f);
+const salesChartColor = Color(0xff216b52);
+const expenseChartColor = Color(0xffaf6c36);
+const dueChartColor = Color(0xff977538);
 
 class ReportLegend extends StatelessWidget {
   const ReportLegend({super.key});
@@ -22,14 +23,51 @@ class ReportLegend extends StatelessWidget {
   );
 }
 
-class ActivityBarChart extends StatelessWidget {
+class ActivityBarChart extends StatefulWidget {
   const ActivityBarChart({super.key, required this.report});
   final BusinessReport report;
+
+  @override
+  State<ActivityBarChart> createState() => _ActivityBarChartState();
+}
+
+class _ActivityBarChartState extends State<ActivityBarChart> {
+  final _scroll = ScrollController();
+  bool _positioned = false, _pending = false;
+  BusinessReport get report => widget.report;
+  @override
+  void didUpdateWidget(ActivityBarChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.report.start != report.start ||
+        oldWidget.report.end != report.end ||
+        oldWidget.report.currency != report.currency) {
+      _positioned = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _focusLatest() {
+    if (_positioned || _pending) return;
+    _pending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pending = false;
+      if (mounted && _scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        _positioned = true;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final activity = _visibleActivity(report.activity);
+    if (activity.isNotEmpty) _focusLatest();
     final width = math.max(360.0, activity.length * 90.0 + 56);
     final maxValue = activity.fold<BigInt>(BigInt.zero, (current, point) {
       final revenue = point.revenueMinor.abs();
@@ -37,12 +75,8 @@ class ActivityBarChart extends StatelessWidget {
       final pointMax = revenue > expense ? revenue : expense;
       return pointMax > current ? pointMax : current;
     });
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -56,27 +90,47 @@ class ActivityBarChart extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 12),
-          const ReportLegend(),
-          const SizedBox(height: 14),
-          if (activity.isEmpty)
-            const SizedBox(height: 100)
-          else
+          if (activity.isNotEmpty && maxValue > BigInt.zero) ...[
+            const SizedBox(height: 12),
+            const ReportLegend(),
+            const SizedBox(height: 14),
             SingleChildScrollView(
+              key: const Key('activity-scroll'),
+              controller: _scroll,
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: width,
                 height: 208,
-                child: CustomPaint(
-                  painter: _ActivityChartPainter(
-                    activity: activity,
-                    maxValue: maxValue,
-                    lineColor: theme.colorScheme.outlineVariant,
-                    labelColor: theme.colorScheme.onSurfaceVariant,
+                child: Semantics(
+                  image: true,
+                  label:
+                      'Revenue and expenses. ${activity.map((p) => '${p.label}: revenue ${formatBigMoney(p.revenueMinor, report.currency)}, expenses ${formatBigMoney(p.expenseMinor, report.currency)}').join('. ')}',
+                  child: CustomPaint(
+                    painter: _ActivityChartPainter(
+                      activity: activity,
+                      maxValue: maxValue,
+                      lineColor: theme.colorScheme.outlineVariant,
+                      labelColor: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
             ),
+            DisclosureSection(
+              title: 'Activity values',
+              maintainState: false,
+              children: [
+                for (final point in activity)
+                  RecordFact(
+                    label: point.label,
+                    value:
+                        'Sales ${formatBigMoney(point.revenueMinor, report.currency)}',
+                    detail:
+                        'Expenses ${formatBigMoney(point.expenseMinor, report.currency)}',
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -113,22 +167,23 @@ class PaymentDonutChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
         children: [
           SizedBox(
             width: 104,
             height: 104,
-            child: CustomPaint(
-              painter: _PaymentDonutPainter(
-                received: report.paidRevenueMinor,
-                due: report.unpaidRevenueMinor,
-                track: theme.colorScheme.surfaceContainerHighest,
+            child: Semantics(
+              image: true,
+              label:
+                  'Payment status. Received ${formatBigMoney(report.paidRevenueMinor, report.currency)}. Balance due ${formatBigMoney(report.unpaidRevenueMinor, report.currency)}.',
+              child: CustomPaint(
+                painter: _PaymentDonutPainter(
+                  received: report.paidRevenueMinor,
+                  due: report.unpaidRevenueMinor,
+                  track: theme.colorScheme.surfaceContainerHighest,
+                ),
               ),
             ),
           ),
@@ -169,8 +224,8 @@ class _LegendItem extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       Container(
-        width: 30,
-        height: 30,
+        width: 10,
+        height: 10,
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 8),
@@ -268,7 +323,8 @@ class _ActivityChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _ActivityChartPainter oldDelegate) =>
       oldDelegate.activity != activity ||
       oldDelegate.maxValue != maxValue ||
-      oldDelegate.lineColor != lineColor;
+      oldDelegate.lineColor != lineColor ||
+      oldDelegate.labelColor != labelColor;
 }
 
 class _PaymentDonutPainter extends CustomPainter {

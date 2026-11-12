@@ -15,6 +15,7 @@ import 'package:hyner/features/purchases/domain/purchase_repository.dart';
 import 'package:hyner/features/reports/domain/business_report.dart';
 import 'package:hyner/features/reports/domain/reports_repository.dart';
 import 'package:hyner/features/settings/domain/payment_settings.dart';
+import 'package:hyner/features/sales/domain/bill_document_repository.dart';
 
 import 'inventory_fakes.dart';
 import 'sales_fakes.dart';
@@ -285,12 +286,14 @@ AppDependencies connectedTestDependencies(
   MemoryAppearance? appearance,
   FakeInventory? inventory,
   FakeSales? sales,
+  BillDocumentRepository? billDocuments,
 }) => AppDependencies(
   auth: auth,
   profiles: profiles,
   inventory: inventory ?? FakeInventory(),
   sales: sales ?? FakeSales(inventory ?? FakeInventory()),
   customers: FakeCustomers(),
+  billDocuments: billDocuments,
   paymentSettings: MemoryPaymentSettings(),
   purchases: FakePurchases(),
   reports: FakeReports(),

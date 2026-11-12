@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../domain/product.dart';
 import '../domain/inventory_repository.dart';
 import '../domain/pricing_formula.dart';
@@ -280,8 +281,8 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
         body: PageContent(
           children: [
             Text(
-              product == null ? 'Product details' : product.sku,
-              style: Theme.of(context).textTheme.headlineMedium,
+              product == null ? 'Product information' : product.sku,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -308,6 +309,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     maxLength: 40,
                     decoration: const InputDecoration(
                       labelText: 'Product code',
+                      counterText: '',
                       helperText: 'Unique code; cannot be changed later.',
                     ),
                     validator: (value) =>
@@ -325,222 +327,17 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
                       labelText: 'Product name',
+                      counterText: '',
                     ),
                     validator: (value) => value == null || value.trim().isEmpty
                         ? 'Enter the product name.'
                         : null,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    key: const Key('product-category'),
-                    controller: _category,
-                    enabled: enabled,
-                    maxLength: 80,
-                    decoration: const InputDecoration(
-                      labelText: 'Category (optional)',
-                    ),
-                  ),
-                  const SizedBox(height: 24),
                   Text(
-                    'Custom parameters',
+                    'Pricing and stock',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  const SizedBox(height: 6),
-                  const DetailHint(
-                    'Add sizes, materials, ratings or any details. Include units in the value, such as 34 inches or 12 mm.',
-                  ),
-                  const SizedBox(height: 12),
-                  for (var index = 0; index < _parameters.length; index++) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            children: [
-                              TextFormField(
-                                controller: _parameters[index].name,
-                                enabled: enabled,
-                                maxLength: 60,
-                                decoration: const InputDecoration(
-                                  labelText: 'Parameter name',
-                                  counterText: '',
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                controller: _parameters[index].value,
-                                enabled: enabled,
-                                maxLength: 120,
-                                decoration: const InputDecoration(
-                                  labelText: 'Value',
-                                  counterText: '',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove parameter',
-                          onPressed: enabled
-                              ? () => setState(() {
-                                  _parameters.removeAt(index).dispose();
-                                  _dirty = true;
-                                })
-                              : null,
-                          icon: const Icon(Icons.delete_outline_rounded),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_parameters.length < 20)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: enabled
-                            ? () => setState(() {
-                                _parameters.add(_ParameterFields('', ''));
-                                _dirty = true;
-                              })
-                            : null,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add parameter'),
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Price depends on measurements'),
-                    subtitle: const Text(
-                      'Ask for sizes when adding this product to a bill',
-                    ),
-                    value: _measuredPricing,
-                    onChanged: enabled
-                        ? (value) => setState(() {
-                            _measuredPricing = value;
-                            _dirty = true;
-                          })
-                        : null,
-                  ),
-                  if (_measuredPricing)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Measured pricing',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            const DetailHint(
-                              'Use names such as length, width, quantity and rate. The formula returns the selling price in major currency units.',
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _formula,
-                              enabled: enabled,
-                              decoration: const InputDecoration(
-                                labelText: 'Formula',
-                                hintText: 'height * rate',
-                                helperText: 'Operators: +  −  ×  ÷  and parentheses. No code is executed.',
-                              ),
-                              onChanged: (_) => setState(() => _dirty = true),
-                              validator: (_) {
-                                if (_formula.text.trim().isEmpty) {
-                                  return 'Enter the formula for measured pricing.';
-                                }
-                                if (_pricingInputs.isEmpty) {
-                                  return 'Add at least one measurement input.';
-                                }
-                                try {
-                                  PricingFormula(
-                                    expression: _formula.text.trim(),
-                                    inputs: [
-                                      for (final input in _pricingInputs)
-                                        PricingInput(
-                                          name: input.name.text.trim(),
-                                          label: input.label.text.trim(),
-                                          unit: input.unit.text.trim(),
-                                        ),
-                                    ],
-                                  ).validate();
-                                  return null;
-                                } on AppFailure catch (error) {
-                                  return error.message;
-                                }
-                              },
-                            ),
-                            for (
-                              var index = 0;
-                              index < _pricingInputs.length;
-                              index++
-                            ) ...[
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _pricingInputs[index].name,
-                                      enabled: enabled,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Input name',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _pricingInputs[index].label,
-                                      enabled: enabled,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Field label',
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: enabled
-                                        ? () => setState(
-                                            () => _pricingInputs
-                                                .removeAt(index)
-                                                .dispose(),
-                                          )
-                                        : null,
-                                    icon: const Icon(
-                                      Icons.delete_outline_rounded,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              TextFormField(
-                                controller: _pricingInputs[index].unit,
-                                enabled: enabled,
-                                decoration: const InputDecoration(
-                                  labelText: 'Unit (optional)',
-                                  hintText: 'in, mm, sq ft',
-                                ),
-                              ),
-                            ],
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: enabled && _pricingInputs.length < 8
-                                    ? () => setState(() {
-                                        _pricingInputs.add(
-                                          _PricingInputFields('', '', ''),
-                                        );
-                                        _dirty = true;
-                                      })
-                                    : null,
-                                icon: const Icon(Icons.add_rounded),
-                                label: const Text('Add measurement input'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     isExpanded: true,
@@ -566,30 +363,31 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                         : null,
                   ),
                   const SizedBox(height: 20),
-                  TextFormField(
-                    key: const Key('product-cost'),
-                    controller: _cost,
-                    enabled: enabled,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                  ResponsivePair(
+                    first: TextFormField(
+                      key: const Key('product-cost'),
+                      controller: _cost,
+                      enabled: enabled,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Cost price ($_currency)',
+                      ),
+                      validator: (value) => _number(value, money: true),
                     ),
-                    decoration: InputDecoration(
-                      labelText: 'Cost price ($_currency)',
+                    second: TextFormField(
+                      key: const Key('product-price'),
+                      controller: _price,
+                      enabled: enabled,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Selling price ($_currency)',
+                      ),
+                      validator: (value) => _number(value, money: true),
                     ),
-                    validator: (value) => _number(value, money: true),
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    key: const Key('product-price'),
-                    controller: _price,
-                    enabled: enabled,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Selling price ($_currency)',
-                    ),
-                    validator: (value) => _number(value, money: true),
                   ),
                   if (product == null) ...[
                     const SizedBox(height: 20),
@@ -616,6 +414,231 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     validator: _number,
                   ),
                   const SizedBox(height: 24),
+                  DisclosureSection(
+                    title: 'Product specifications',
+                    summary: 'Category, material, size and other details',
+                    initiallyExpanded:
+                        widget.product?.parameters.isNotEmpty == true ||
+                        widget.product?.category.isNotEmpty == true,
+                    revealError: _failure != null,
+                    children: [
+                      TextFormField(
+                        key: const Key('product-category'),
+                        controller: _category,
+                        enabled: enabled,
+                        maxLength: 80,
+                        decoration: const InputDecoration(
+                          labelText: 'Category (optional)',
+                          counterText: '',
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Custom parameters',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      const DetailHint(
+                        'Add sizes, materials, ratings or any details. Include units in the value, such as 34 inches or 12 mm.',
+                      ),
+                      const SizedBox(height: 12),
+                      for (
+                        var index = 0;
+                        index < _parameters.length;
+                        index++
+                      ) ...[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  TextFormField(
+                                    controller: _parameters[index].name,
+                                    enabled: enabled,
+                                    maxLength: 60,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Parameter name',
+                                      counterText: '',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: _parameters[index].value,
+                                    enabled: enabled,
+                                    maxLength: 120,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Value',
+                                      counterText: '',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Remove parameter',
+                              onPressed: enabled
+                                  ? () => setState(() {
+                                      _parameters.removeAt(index).dispose();
+                                      _dirty = true;
+                                    })
+                                  : null,
+                              icon: const Icon(Icons.delete_outline_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_parameters.length < 20)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: enabled
+                                ? () => setState(() {
+                                    _parameters.add(_ParameterFields('', ''));
+                                    _dirty = true;
+                                  })
+                                : null,
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add parameter'),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Price depends on measurements'),
+                    subtitle: const Text(
+                      'Ask for sizes when adding this product to a bill',
+                    ),
+                    value: _measuredPricing,
+                    onChanged: enabled
+                        ? (value) => setState(() {
+                            _measuredPricing = value;
+                            _dirty = true;
+                          })
+                        : null,
+                  ),
+                  if (_measuredPricing)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Measured pricing',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 6),
+                          const DetailHint(
+                            'Use names such as length, width, quantity and rate. The formula returns the selling price in major currency units.',
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _formula,
+                            enabled: enabled,
+                            decoration: const InputDecoration(
+                              labelText: 'Formula',
+                              hintText: 'height * rate',
+                              helperText: 'Operators: +  −  ×  ÷  and parentheses. No code is executed.',
+                            ),
+                            onChanged: (_) => setState(() => _dirty = true),
+                            validator: (_) {
+                              if (_formula.text.trim().isEmpty) {
+                                return 'Enter the formula for measured pricing.';
+                              }
+                              if (_pricingInputs.isEmpty) {
+                                return 'Add at least one measurement input.';
+                              }
+                              try {
+                                PricingFormula(
+                                  expression: _formula.text.trim(),
+                                  inputs: [
+                                    for (final input in _pricingInputs)
+                                      PricingInput(
+                                        name: input.name.text.trim(),
+                                        label: input.label.text.trim(),
+                                        unit: input.unit.text.trim(),
+                                      ),
+                                  ],
+                                ).validate();
+                                return null;
+                              } on AppFailure catch (error) {
+                                return error.message;
+                              }
+                            },
+                          ),
+                          for (
+                            var index = 0;
+                            index < _pricingInputs.length;
+                            index++
+                          ) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _pricingInputs[index].name,
+                                    enabled: enabled,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Input name',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _pricingInputs[index].label,
+                                    enabled: enabled,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Field label',
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Remove measurement input',
+                                  onPressed: enabled
+                                      ? () => setState(
+                                          () => _pricingInputs
+                                              .removeAt(index)
+                                              .dispose(),
+                                        )
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            TextFormField(
+                              controller: _pricingInputs[index].unit,
+                              enabled: enabled,
+                              decoration: const InputDecoration(
+                                labelText: 'Unit (optional)',
+                                hintText: 'in, mm, sq ft',
+                              ),
+                            ),
+                          ],
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: enabled && _pricingInputs.length < 8
+                                  ? () => setState(() {
+                                      _pricingInputs.add(
+                                        _PricingInputFields('', '', ''),
+                                      );
+                                      _dirty = true;
+                                    })
+                                  : null,
+                              icon: const Icon(Icons.add_rounded),
+                              label: const Text('Add measurement input'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 16),
                   if (_failure != null) ...[
                     InlineNotice(_failure!.displayMessage, isError: true),
                     const SizedBox(height: 12),

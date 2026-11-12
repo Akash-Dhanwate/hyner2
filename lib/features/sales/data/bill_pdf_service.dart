@@ -21,6 +21,7 @@ class BillPdfService {
     required Sale sale,
     required PaymentSettings settings,
     BillCopy copy = BillCopy.original,
+    BillBrandingCache? brandingCache,
   }) async {
     final document = pw.Document(
       title: 'Bill ${sale.id}',
@@ -53,7 +54,8 @@ class BillPdfService {
             style: pw.TextStyle(color: footerColor, fontSize: 8),
           ),
         ),
-        build: (context) => _page(sale, settings, label, compact),
+        build: (context) =>
+            _page(sale, settings, label, compact, brandingCache),
       ),
     );
     return document.save();
@@ -64,6 +66,7 @@ class BillPdfService {
     PaymentSettings settings,
     String copy,
     bool compact,
+    BillBrandingCache? brandingCache,
   ) {
     PdfColor color(BillTextSection section) =>
         PdfColor.fromInt(0xff000000 | settings.fontColor(section));
@@ -80,8 +83,12 @@ class BillPdfService {
     final business = settings.merchantName.trim().isEmpty
         ? 'Sales bill'
         : settings.merchantName.trim();
-    final logo = _safeImage(settings.logoBase64, compact);
-    final signature = _safeImage(settings.signatureBase64, compact);
+    final branding = (brandingCache ?? BillBrandingCache()).prepare(
+      settings,
+      compact: compact,
+    );
+    final logo = branding.logo;
+    final signature = branding.signature;
     return [
       pw.Container(
         alignment: alignment,
@@ -382,7 +389,7 @@ class BillPdfService {
   // Decode optional images before layout so a damaged legacy image cannot
   // abort invoice creation. Bound resolution and strip image metadata; the
   // archive uses a smaller image while preserving all financial content.
-  static pw.ImageProvider? _safeImage(String encoded, bool compact) {
+  static image.Image? _prepareImage(String encoded, bool compact) {
     if (encoded.isEmpty || encoded.length > 3 * 1024 * 1024) return null;
     try {
       final bytes = base64Decode(encoded);
@@ -401,7 +408,7 @@ class BillPdfService {
         );
       }
       bitmap.exif = image.ExifData();
-      return pw.ImageImage(bitmap);
+      return bitmap;
     } catch (_) {
       return null;
     }
@@ -467,4 +474,51 @@ class BillPdfService {
       ],
     ),
   );
+}
+
+/// Page-owned cache: at most two size variants for the current logo/signature.
+/// Only raster pixels are retained. PDF ImageProviders retain a PdfDocument,
+/// so each document gets fresh providers instead of caching whole PDF graphs.
+class BillBrandingCache {
+  String? _logo, _signature;
+  final _variants = <bool, PreparedBillBranding>{};
+
+  PreparedBillBranding prepare(
+    PaymentSettings settings, {
+    required bool compact,
+  }) {
+    if (_logo != settings.logoBase64 ||
+        _signature != settings.signatureBase64) {
+      clear();
+      _logo = settings.logoBase64;
+      _signature = settings.signatureBase64;
+    }
+    return _variants.putIfAbsent(
+      compact,
+      () => PreparedBillBranding._(
+        BillPdfService._prepareImage(settings.logoBase64, compact),
+        BillPdfService._prepareImage(settings.signatureBase64, compact),
+      ),
+    );
+  }
+
+  void clear() {
+    _logo = null;
+    _signature = null;
+    _variants.clear();
+  }
+}
+
+class PreparedBillBranding {
+  PreparedBillBranding._(this._logo, this._signature);
+  final image.Image? _logo, _signature;
+  pw.ImageProvider? get logo {
+    final bitmap = _logo;
+    return bitmap == null ? null : pw.ImageImage(bitmap);
+  }
+
+  pw.ImageProvider? get signature {
+    final bitmap = _signature;
+    return bitmap == null ? null : pw.ImageImage(bitmap);
+  }
 }

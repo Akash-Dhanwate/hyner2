@@ -195,7 +195,9 @@ GoRoute _page(String path, Widget child) => GoRoute(
     transitionDuration: MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 180),
-    reverseTransitionDuration: const Duration(milliseconds: 120),
+    reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 120),
     transitionsBuilder: (context, animation, secondaryAnimation, child) =>
         FadeTransition(opacity: animation, child: child),
   ),

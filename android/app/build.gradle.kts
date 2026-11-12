@@ -48,3 +48,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Host-only tests exercise bounded file jobs and safe temporary-file selection.
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}

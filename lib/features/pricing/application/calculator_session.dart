@@ -4,6 +4,7 @@ import '../domain/exact.dart';
 import '../domain/universal/rate_card.dart';
 import '../domain/universal/universal_pricing.dart';
 import 'product_setup.dart';
+import 'simple_calculator.dart' show simpleVarietyField;
 
 String pricingError(Object error) => switch (error) {
   ArgumentError() => '${error.message}',
@@ -60,15 +61,32 @@ class CalculatorSession extends ChangeNotifier {
   bool get hasBaseRateOverride => _baseRateOverride != null;
 
   SellingRate? get _availableBaseRate {
-    final rates = product?.rule.rateLookup.rates
-        .where((r) => r.key == 'base')
-        .toList();
-    return rates != null && rates.length == 1 && rates.single.selectors.isEmpty
-        ? rates.single
-        : null;
+    final rule = product?.rule;
+    if (rule == null) return null;
+    final choices = <String, InputValue>{};
+    for (final field in visibleFields.where(
+      (f) => f.type == InputDataType.choice,
+    )) {
+      final selected = entries[field.id]?['choice'];
+      if (selected is String && field.choices.contains(selected)) {
+        choices[field.id] = ChoiceInput(selected);
+      } else if (field.required) {
+        return null;
+      }
+    }
+    try {
+      // Resolve with the same specificity/ambiguity rules as the engine. A
+      // seller can choose a customer rate before finishing numeric dimensions.
+      return rule.rateLookup.resolve(
+        'base',
+        ValidatedInputs(choices, {}, [], []),
+      );
+    } on StateError {
+      return null;
+    }
   }
 
-  /// Null means this product does not have a single selector-free base rate.
+  /// Null means no unambiguous base rate matches the current selection.
   String? get availableBaseRateText {
     final rate = _availableBaseRate;
     if (rate == null) return null;
@@ -81,7 +99,7 @@ class CalculatorSession extends ChangeNotifier {
 
   void setBaseRateOverride(String value) {
     if (_availableBaseRate == null) {
-      throw StateError('A single base rate without selectors is required');
+      throw StateError('Choose a variety with an available selling rate first');
     }
     // Keep invalid edits visible and remove the price until they are corrected.
     _baseRateOverride = value;
@@ -363,6 +381,10 @@ class CalculatorSession extends ChangeNotifier {
       if (unit == 'ft_in') _useSameUnit = false;
       _convertEntry(field, unit);
     } else {
+      if (property == 'choice' && entries[id]![property] != value) {
+        // A negotiated price belongs to the selected variety, not another one.
+        _baseRateOverride = null;
+      }
       entries[id]![property] = value;
       if (property == 'text' || property == 'inches') {
         entries[id]!.remove('source');
@@ -418,6 +440,7 @@ class CalculatorSession extends ChangeNotifier {
         key: base.key,
         amount: amount,
         unit: base.unit,
+        selectors: base.selectors,
       );
       rates = [for (final r in rates) r.id == base.id ? replacement : r];
       changed = true;
@@ -618,6 +641,8 @@ class CalculatorSession extends ChangeNotifier {
     }
     final currency = value.rule.currency;
     final lines = <String>['Price estimate', product!.name];
+    final variety = value.inputs.values[simpleVarietyField];
+    if (variety is ChoiceInput) lines.add('Variety: ${variety.value}');
     for (final field in visibleFields.where(
       (f) =>
           f.isNumeric &&

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "unit": "bytes",
+  "baseline_flutter": "3.47.7",
+  "baseline_universal_apk_bytes": 77164678,
+  "maximum_bytes": {
+    "armeabi-v7a": 32000000,
+    "arm64-v8a": 35000000,
+    "x86_64": 37000000,
+    "universal": 90000000,
+    "bundle": 90000000,
+    "analysis": 35000000
+  },
+  "note": "Compare the same artifact class/toolchain. APK and AAB bytes are not Play download or installed size. Review budget changes with size-analysis evidence."
+}

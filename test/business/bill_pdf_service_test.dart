@@ -61,6 +61,48 @@ void main() {
     signatureBase64: pixel,
   );
 
+  test(
+    'branding pixels are reused by variant without retaining PDF providers',
+    () async {
+      final cache = BillBrandingCache();
+      final first = cache.prepare(settings, compact: false);
+      expect(identical(first, cache.prepare(settings, compact: false)), isTrue);
+      expect(first.logo, isNotNull);
+      expect(
+        identical(first.logo, first.logo),
+        isFalse,
+      ); // Fresh provider cannot retain the preceding document.
+      expect(identical(first, cache.prepare(settings, compact: true)), isFalse);
+      final bytes = await BillPdfService.build(
+        sale: sale,
+        settings: settings,
+        brandingCache: cache,
+      );
+      final again = await BillPdfService.build(
+        sale: sale,
+        settings: settings,
+        brandingCache: cache,
+      );
+      expect(_content(bytes), _content(again));
+      final replaced = cache.prepare(
+        const PaymentSettings(logoBase64: 'broken'),
+        compact: false,
+      );
+      expect(replaced.logo, isNull);
+      expect(replaced.signature, isNull);
+      expect(
+        identical(first, cache.prepare(settings, compact: false)),
+        isFalse,
+      );
+      final beforeClear = cache.prepare(settings, compact: false);
+      cache.clear();
+      expect(
+        identical(beforeClear, cache.prepare(settings, compact: false)),
+        isFalse,
+      );
+    },
+  );
+
   for (final copy in BillCopy.values) {
     test(
       '$copy contains only its intended document and exact selling amounts',

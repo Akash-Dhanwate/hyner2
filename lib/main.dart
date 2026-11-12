@@ -5,6 +5,7 @@ import 'app/bootstrap/app_dependencies.dart';
 import 'app/bootstrap/bootstrap.dart';
 import 'app/hyner_app.dart' as business;
 import 'core/notifications/local_notification_service.dart';
+import 'core/performance/performance_recorder.dart';
 
 import 'core/firebase/firebase_bootstrap.dart';
 import 'features/pricing/application/open_workspace.dart';
@@ -13,7 +14,9 @@ import 'features/pricing/presentation/pricing_widgets.dart';
 import 'features/pricing/presentation/quickprice_screen.dart';
 
 void main() {
+  final startup = PerformanceRecorder.enabled ? (Stopwatch()..start()) : null;
   WidgetsFlutterBinding.ensureInitialized();
+  PerformanceRecorder.initialize(startup);
   LocalNotificationService.instance.initialize();
   runApp(const HynerLauncher());
 }
@@ -34,6 +37,7 @@ class _HynerLauncherState extends State<HynerLauncher> {
     future: dependencies,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
+        PerformanceRecorder.mark(PerformanceMilestone.bootstrapReady);
         return ProviderScope(
           overrides: [dependenciesProvider.overrideWithValue(snapshot.data!)],
           child: const business.HynerApp(),

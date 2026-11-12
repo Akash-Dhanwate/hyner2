@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,8 @@ import 'package:hyner/core/errors/app_failure.dart';
 import 'package:hyner/features/auth/domain/auth_repository.dart';
 import 'package:hyner/features/profile/domain/user_profile.dart';
 import 'package:hyner/features/sales/domain/sale.dart';
+import 'package:hyner/features/sales/domain/bill_document_repository.dart';
+import 'package:hyner/features/sales/presentation/sales_controller.dart';
 import 'package:hyner/features/sales/data/bill_pdf_actions.dart';
 import 'package:hyner/features/customers/domain/customer.dart';
 import 'package:hyner/features/inventory/domain/pricing_formula.dart';
@@ -32,6 +35,7 @@ void main() {
     Size size = const Size(390, 844),
     double scale = 1,
     ThemeMode mode = ThemeMode.light,
+    BillDocumentRepository? documents,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -56,6 +60,7 @@ void main() {
             profiles,
             inventory: inventory,
             sales: sales,
+            billDocuments: documents,
           ),
         ),
       ],
@@ -462,6 +467,74 @@ void main() {
     },
   );
 
+  testWidgets(
+    'bill open and payment refresh use archive metadata; bytes are loaded only for export',
+    (tester) async {
+      final documents = _ArchiveReadCounter();
+      await mount(tester, documents: documents);
+      await startBill(tester);
+      await tap(tester, find.byKey(const Key('save-sale')));
+      expect(documents.ensureCalls, 1);
+      expect(documents.byteReads, 0);
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        BillPdfActions.channel,
+        (_) async => 'content://saved',
+      );
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+        messenger.setMockMethodCallHandler(BillPdfActions.channel, null);
+      });
+      await tap(tester, find.text('More document options'));
+      await tap(tester, find.text('Save duplicate PDF'));
+      debugDefaultTargetPlatformOverride = null;
+      expect(documents.byteReads, 1);
+      await sales.recordPayment(testIdentity.uid, 'sale1', 1550);
+      container.invalidate(saleProvider('sale1'));
+      await tester.pumpAndSettle();
+      expect(
+        documents.ensureCalls,
+        3,
+      ); // Open, explicit export, refreshed paid state.
+      expect(documents.byteReads, 1);
+      expect(sales.writes, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'damaged duplicate keeps the rebuilt export fallback without replacing the archive',
+    (tester) async {
+      final documents = _ArchiveReadCounter(broken: true);
+      await mount(tester, documents: documents);
+      await startBill(tester);
+      await tap(tester, find.byKey(const Key('save-sale')));
+      Uint8List? exported;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(BillPdfActions.channel, (call) async {
+        exported = (call.arguments as Map)['bytes'] as Uint8List;
+        return 'content://rebuilt';
+      });
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = null;
+        messenger.setMockMethodCallHandler(BillPdfActions.channel, null);
+      });
+      await tap(tester, find.text('More document options'));
+      await tap(tester, find.text('Save duplicate PDF'));
+      debugDefaultTargetPlatformOverride = null;
+      expect(exported, isNotNull);
+      expect(ascii.decode(exported!.take(5).toList()), '%PDF-');
+      expect(documents.byteReads, 1);
+      expect(documents.saved, 0);
+      expect(sales.writes, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('calculated dimensions and decimal price are saved on the bill', (
     tester,
   ) async {
@@ -730,5 +803,36 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+  }
+}
+
+class _ArchiveReadCounter implements BillDocumentRepository {
+  _ArchiveReadCounter({this.broken = false});
+  final bool broken;
+  int byteReads = 0, ensureCalls = 0, saved = 0;
+  final bytes = Uint8List.fromList(
+    utf8.encode('%PDF-1.7\narchived duplicate\n%%EOF'),
+  );
+  @override
+  Future<bool> hasDuplicate(String uid, String saleId) async => true;
+  @override
+  Future<void> ensureDuplicate(
+    String uid,
+    String saleId,
+    Future<Uint8List> Function() generate,
+  ) async {
+    ensureCalls++;
+  }
+
+  @override
+  Future<Uint8List?> duplicate(String uid, String saleId) async {
+    byteReads++;
+    if (broken) throw const FormatException('Corrupt fixture archive');
+    return bytes;
+  }
+
+  @override
+  Future<void> saveDuplicate(String uid, String saleId, Uint8List bytes) async {
+    saved++;
   }
 }

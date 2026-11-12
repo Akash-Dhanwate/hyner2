@@ -17,14 +17,13 @@ class WorkspaceShell extends ConsumerWidget {
   final String location;
   final Widget child;
 
-  int get _selected => switch (location) {
-    '/dashboard' => 0,
-    '/inventory' => 1,
-    '/sales' => 2,
-    '/sales/history' => 2,
-    '/reports' => 3,
-    _ => 4,
-  };
+  int get _selected {
+    if (location == '/dashboard') return 0;
+    if (location.startsWith('/inventory')) return 1;
+    if (location.startsWith('/sales')) return 2;
+    if (location == '/reports') return 3;
+    return 4;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,11 +65,13 @@ class WorkspaceShell extends ConsumerWidget {
             ),
         ],
       ),
-      drawer: Drawer(
-        child: SafeArea(
-          child: _NavigationList(location: location, closeDrawer: true),
-        ),
-      ),
+      drawer: wide
+          ? null
+          : Drawer(
+              child: SafeArea(
+                child: _NavigationList(location: location, closeDrawer: true),
+              ),
+            ),
       body: Row(
         children: [
           if (wide)
@@ -172,30 +173,65 @@ class _NavigationList extends StatelessWidget {
       children: [
         Text('Workspace', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 20),
-        for (final module in [
-          const WorkspaceModule(
-            'Dashboard',
-            '/dashboard',
-            Icons.space_dashboard_outlined,
-            '',
-            [],
-          ),
-          ...businessModules,
-        ])
+        if (!sheet) ...[
           ListTile(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            selected:
-                module.path == location ||
-                location.startsWith('${module.path}/'),
-            selectedTileColor: Theme.of(context).colorScheme.primaryContainer
-                .withValues(alpha: .5),
-            leading: Icon(module.icon, size: 22),
-            title: Text(module.name),
-            onTap: () => navigate(module.path),
+            leading: const Icon(Icons.home_outlined),
+            title: const Text('Home'),
+            selected: location == '/dashboard',
+            onTap: () => navigate('/dashboard'),
           ),
+          for (final module in businessModules.where(
+            (m) => ['/inventory', '/sales', '/reports'].contains(m.path),
+          ))
+            ListTile(
+              leading: Icon(module.icon),
+              title: Text(module.name),
+              selected:
+                  location == module.path ||
+                  location.startsWith('${module.path}/'),
+              onTap: () => navigate(module.path),
+            ),
+        ],
+        for (final group in const {
+          'Sell & collect': [
+            '/quickprice',
+            '/sales',
+            '/customers',
+            '/quotations',
+            '/whatsapp',
+          ],
+          'Stock & suppliers': ['/inventory', '/purchases', '/purchase-orders'],
+          'Money & reports': ['/expenses', '/accounting', '/reports'],
+        }.entries) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 24, bottom: 8),
+            child: Text(
+              group.key,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final module in businessModules.where(
+            (module) =>
+                group.value.contains(module.path) &&
+                !['/inventory', '/sales', '/reports'].contains(module.path),
+          ))
+            ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              selected:
+                  module.path == location ||
+                  location.startsWith('${module.path}/'),
+              selectedTileColor: Theme.of(context).colorScheme.primaryContainer
+                  .withValues(alpha: .5),
+              leading: Icon(module.icon, size: 22),
+              title: Text(module.name),
+              onTap: () => navigate(module.path),
+            ),
+        ],
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Divider(),
@@ -209,7 +245,7 @@ class _NavigationList extends StatelessWidget {
           ),
         const SizedBox(height: 28),
         Text(
-          'Hyner · Business, in order.',
+          'Hyner · Saved on this device',
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),

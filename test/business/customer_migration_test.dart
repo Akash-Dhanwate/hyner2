@@ -137,7 +137,7 @@ void main() {
         await old.close();
 
         final db = await store.databaseFor(uid);
-        expect(await db.getVersion(), 11);
+        expect(await db.getVersion(), 12);
         expect(await db.query('bill_documents'), isEmpty);
         final archiveColumns = await db.rawQuery(
           'PRAGMA table_info(bill_documents)',
@@ -300,7 +300,7 @@ void main() {
     }
     await old.close();
     final db = await store.databaseFor(uid);
-    expect(await db.getVersion(), 11);
+    expect(await db.getVersion(), 12);
     expect(await db.query('customers'), isEmpty);
     final rows = await db.query('sales', orderBy: 'id');
     expect(rows.every((row) => row['customerId'] == null), isTrue);

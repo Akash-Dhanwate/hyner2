@@ -118,7 +118,7 @@ void main() {
 
   for (final size in [(280.0, 1.0), (320.0, 2.5), (390.0, 3.0), (760.0, 1.0)]) {
     testWidgets(
-      'dashboard has three columns at width ${size.$1} and text scale ${size.$2}',
+      'dashboard metrics adapt without clipping at width ${size.$1} and text scale ${size.$2}',
       (tester) async {
         await mount(tester, width: size.$1, scale: size.$2);
         final metrics = [
@@ -126,18 +126,19 @@ void main() {
             find.byKey(ValueKey('dashboard-metric-$name')),
         ];
         final boxes = metrics.map(tester.getRect).toList();
-        expect(boxes[0].top, boxes[1].top);
-        expect(boxes[1].top, boxes[2].top);
-        expect(boxes[0].width, closeTo(boxes[1].width, 0.01));
-        expect(boxes[1].width, closeTo(boxes[2].width, 0.01));
-        expect(boxes[0].right, lessThan(boxes[1].left));
-        expect(boxes[1].right, lessThan(boxes[2].left));
+        final stack = size.$1 < 360 || size.$2 > 1.5;
+        if (stack) {
+          expect(boxes[0].bottom, lessThan(boxes[1].top));
+          expect(boxes[1].bottom, lessThan(boxes[2].top));
+        } else {
+          expect(boxes[0].top, boxes[1].top);
+          expect(boxes[1].top, boxes[2].top);
+          expect(boxes[0].right, lessThan(boxes[1].left));
+          expect(boxes[1].right, lessThan(boxes[2].left));
+        }
+        expect(boxes[0].width, closeTo(boxes[1].width, .01));
         expect(find.text('INR 1234.56'), findsOneWidget);
         final dashboard = find.byType(DashboardScreen);
-        expect(
-          find.descendant(of: dashboard, matching: find.byType(ListTile)),
-          findsNothing,
-        );
         expect(
           find.descendant(of: dashboard, matching: find.text('BUSINESS TOOLS')),
           findsNothing,
@@ -159,6 +160,16 @@ void main() {
               matching: find.byType(Scrollable),
             )
             .first;
+        expect(find.byType(ActivityBarChart), findsNothing);
+        await tester.scrollUntilVisible(
+          find.text('Activity details'),
+          300,
+          scrollable: scroll,
+        );
+        await tester.ensureVisible(find.text('Activity details'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Activity details'));
+        await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byType(ActivityBarChart),
           300,

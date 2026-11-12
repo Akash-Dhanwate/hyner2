@@ -118,6 +118,13 @@ class ReportPdfService {
           ),
           pw.SizedBox(height: 18),
           _metricCards(report),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            report.hasIncompleteCosts
+                ? 'Earnings are incomplete: ${report.uncostedSalesCount} bills have no saved buying costs. Stock purchases are not deducted twice.'
+                : 'Earnings: saved selling amounts less saved buying costs and recorded operating expenses. Stock purchases are not deducted twice.',
+            style: const pw.TextStyle(color: _muted, fontSize: 8),
+          ),
           pw.SizedBox(height: 18),
           _sectionTitle('Sales revenue and recorded expenses'),
           pw.SizedBox(height: 6),
@@ -280,6 +287,20 @@ class ReportPdfService {
 
   static pw.Widget _metricCards(BusinessReport report) {
     final cards = [
+      (
+        report.hasIncompleteCosts
+            ? 'Known-cost earnings'
+            : 'Earnings after costs',
+        formatBigMoney(report.earningsAfterCostsMinor, report.currency),
+      ),
+      (
+        'Gross profit',
+        formatBigMoney(report.grossProfitMinor, report.currency),
+      ),
+      (
+        'Operating expenses',
+        formatBigMoney(report.operatingExpensesMinor, report.currency),
+      ),
       ('Sales revenue', formatBigMoney(report.revenueMinor, report.currency)),
       ('Received', formatBigMoney(report.paidRevenueMinor, report.currency)),
       (

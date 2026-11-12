@@ -9,6 +9,42 @@ import 'bill_document_codec.dart';
 class LocalBillDocumentRepository implements BillDocumentRepository {
   LocalBillDocumentRepository(this.store);
   final LocalBusinessDatabase store;
+  final _jobs = <(String, String), Future<void>>{};
+
+  @override
+  Future<bool> hasDuplicate(String uid, String saleId) async {
+    final db = await store.databaseFor(uid);
+    final rows = await db.query(
+      'bill_documents',
+      columns: ['saleId'],
+      where: 'saleId = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  @override
+  Future<void> ensureDuplicate(
+    String uid,
+    String saleId,
+    Future<Uint8List> Function() generate,
+  ) {
+    final key = (uid, saleId);
+    final existing = _jobs[key];
+    if (existing != null) return existing;
+    final job =
+        (() async {
+          if (await hasDuplicate(uid, saleId)) return;
+          final bytes = await generate();
+          await saveDuplicate(uid, saleId, bytes);
+        })().whenComplete(() {
+          _jobs.remove(key);
+        });
+    _jobs[key] = job;
+    return job;
+  }
+
   @override
   Future<Uint8List?> duplicate(String uid, String saleId) async {
     final db = await store.databaseFor(uid);

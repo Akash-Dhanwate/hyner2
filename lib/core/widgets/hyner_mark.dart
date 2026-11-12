@@ -21,7 +21,7 @@ class _MarkPainter extends CustomPainter {
     final s = size.width;
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(s * .25)),
-      Paint()..color = const Color(0xFF6952D9),
+      Paint()..color = const Color(0xFF175C46),
     );
     final white = Paint()..color = Colors.white;
     canvas.drawRRect(

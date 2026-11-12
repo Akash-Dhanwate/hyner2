@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../customers/domain/customer.dart';
 import '../../customers/presentation/customers_controller.dart';
 import '../../inventory/domain/product.dart';
@@ -16,6 +17,7 @@ import '../domain/sale.dart';
 import '../domain/sale_checkout_seed.dart';
 import 'sale_product_picker.dart';
 import 'sales_controller.dart';
+import 'bill_summary.dart';
 import '../../reports/presentation/reports_controller.dart';
 
 class SaleEditorScreen extends ConsumerWidget {
@@ -420,6 +422,7 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
       });
       await repository.create(widget.uid, _id!, draft);
       if (!_current) return;
+      ref.invalidate(recentSalesProvider);
       try {
         await _checkout?.onSaved?.call(_id!);
       } catch (_) {
@@ -581,29 +584,15 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
         body: PageContent(
           children: [
             if (_checkout == null) ...[
-              const Eyebrow('Bill details'),
-              const SizedBox(height: 12),
               Text(
                 'Build a bill',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: 12),
-              const DetailHint(
-                'Add multiple in-stock products to one bill. Set a separate bill price for each; Inventory selling prices stay unchanged.',
-              ),
+              _addProductButton(enabled),
+              if (!_hasLines) const RecentBills(),
+              const SizedBox(height: 20),
             ],
-            if (widget.embedded) ...[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => context.push<void>('/sales/history'),
-                  icon: const Icon(Icons.history_rounded),
-                  label: const Text('Saved bills'),
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
             Form(
               key: _form,
               child: Column(
@@ -687,19 +676,20 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                           label: const Text('Edit measurements'),
                         ),
                       ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        onPressed: enabled
-                            ? () => setState(() {
-                                _prices[product.sku]!.text = moneyDecimal(
-                                  product.priceMinor,
-                                );
-                              })
-                            : null,
-                        child: const Text('Use inventory price'),
+                    if (_priceChanged(product))
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: enabled
+                              ? () => setState(() {
+                                  _prices[product.sku]!.text = moneyDecimal(
+                                    product.priceMinor,
+                                  );
+                                })
+                              : null,
+                          child: const Text('Use inventory price'),
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     TextFormField(
                       key: ValueKey('sale-quantity-${product.sku}'),
@@ -734,78 +724,82 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                         }
                       },
                     ),
-                    if ((_parameters[product.sku] ?? []).isNotEmpty ||
-                        product.parameters.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Product specifications',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ],
-                    for (
-                      var index = 0;
-                      index < (_parameters[product.sku]?.length ?? 0);
-                      index++
-                    ) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _parameters[product.sku]![index].name,
-                              enabled: enabled,
-                              maxLength: 60,
-                              decoration: const InputDecoration(
-                                labelText: 'Parameter',
-                                counterText: '',
+                    DisclosureSection(
+                      key: ValueKey('sale-specifications-${product.sku}'),
+                      title: 'Item details',
+                      summary:
+                          '${_parameters[product.sku]?.length ?? 0} specifications · optional edits',
+                      revealError:
+                          _failure?.message.toLowerCase().contains(
+                            'parameter',
+                          ) ==
+                          true,
+                      children: [
+                        for (
+                          var index = 0;
+                          index < (_parameters[product.sku]?.length ?? 0);
+                          index++
+                        ) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller:
+                                      _parameters[product.sku]![index].name,
+                                  enabled: enabled,
+                                  maxLength: 60,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Parameter',
+                                    counterText: '',
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
                               ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller:
-                                  _parameters[product.sku]![index].value,
-                              enabled: enabled,
-                              maxLength: 120,
-                              decoration: const InputDecoration(
-                                labelText: 'Value',
-                                counterText: '',
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller:
+                                      _parameters[product.sku]![index].value,
+                                  enabled: enabled,
+                                  maxLength: 120,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Value',
+                                    counterText: '',
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
                               ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Remove bill parameter',
-                            onPressed: enabled
-                                ? () => setState(() {
-                                    _parameters[product.sku]![index].dispose();
-                                    _parameters[product.sku]!.removeAt(index);
-                                  })
-                                : null,
-                            icon: const Icon(Icons.close_rounded),
+                              IconButton(
+                                tooltip: 'Remove bill parameter',
+                                onPressed: enabled
+                                    ? () => setState(() {
+                                        _parameters[product.sku]![index]
+                                            .dispose();
+                                        _parameters[product.sku]!.removeAt(
+                                          index,
+                                        );
+                                      })
+                                    : null,
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
-                    if ((_parameters[product.sku]?.length ?? 0) < 20)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: enabled
-                              ? () => _addParameter(product.sku)
-                              : null,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Add bill parameter'),
-                        ),
-                      ),
+                        if ((_parameters[product.sku]?.length ?? 0) < 20)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: enabled
+                                  ? () => _addParameter(product.sku)
+                                  : null,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Add bill parameter'),
+                            ),
+                          ),
+                      ],
+                    ),
                     const Divider(height: 32),
                   ],
-                  if (!_hasLines)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 20),
-                      child: Text('No products added yet.'),
-                    ),
                   if (_checkout != null && _products.isEmpty)
                     ExpansionTile(
                       key: const Key('sale-additional-products'),
@@ -815,114 +809,119 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [_addProductButton(enabled)],
                     )
-                  else
+                  else if (_checkout != null)
                     _addProductButton(enabled),
-                  const SizedBox(height: 28),
-                  Text('Total', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    preview == null
-                        ? (!_hasLines ? '—' : 'Check prices and quantities')
-                        : formatMoney(preview.totalMinor, preview.currency),
-                    key: const Key('sale-total'),
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Payment',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 0,
-                        label: Text('Pay in full'),
-                        icon: Icon(Icons.check_circle_outline_rounded),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        label: Text('Advance'),
-                        icon: Icon(Icons.payments_outlined),
-                      ),
-                      ButtonSegment(
-                        value: 2,
-                        label: Text('Pay later'),
-                        icon: Icon(Icons.schedule_outlined),
+                  if (_hasLines) ...[
+                    const SizedBox(height: 28),
+                    Text(
+                      'Total',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      preview == null
+                          ? (!_hasLines ? '—' : 'Check prices and quantities')
+                          : formatMoney(preview.totalMinor, preview.currency),
+                      key: const Key('sale-total'),
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 20),
+                    if (_checkout == null) ...customerFields,
+                    Text(
+                      'Payment',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(
+                          value: 0,
+                          label: Text('Pay in full'),
+                          icon: Icon(Icons.check_circle_outline_rounded),
+                        ),
+                        ButtonSegment(
+                          value: 1,
+                          label: Text('Advance'),
+                          icon: Icon(Icons.payments_outlined),
+                        ),
+                        ButtonSegment(
+                          value: 2,
+                          label: Text('Pay later'),
+                          icon: Icon(Icons.schedule_outlined),
+                        ),
+                      ],
+                      selected: {_paymentMode},
+                      onSelectionChanged: enabled
+                          ? (selection) => setState(() {
+                              _paymentMode = selection.first;
+                            })
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _paymentMode == 2
+                          ? 'Create the bill now and record payment later.'
+                          : _paymentMode == 1
+                          ? 'Create a QR for the amount collected now.'
+                          : 'Create a QR for the full bill total.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (_paymentMode == 1) ...[
+                      TextFormField(
+                        key: const Key('sale-advance-amount'),
+                        controller: _advanceAmount,
+                        enabled: enabled,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          labelText: !_hasLines
+                              ? 'Advance amount'
+                              : 'Advance amount ($_currency)',
+                          helperText: 'The amount can be changed again before each payment is recorded.',
+                        ),
+                        validator: (value) {
+                          try {
+                            final amount = parseMoney(value ?? '');
+                            final total = preview?.totalMinor;
+                            if (total == null || amount < 1 || amount > total) {
+                              return 'Enter an amount greater than zero and no more than the bill total.';
+                            }
+                            return null;
+                          } on AppFailure catch (error) {
+                            return error.message;
+                          }
+                        },
                       ),
                     ],
-                    selected: {_paymentMode},
-                    onSelectionChanged: enabled
-                        ? (selection) => setState(() {
-                            _paymentMode = selection.first;
-                          })
-                        : null,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _paymentMode == 2
-                        ? 'Create the bill now and record payment later.'
-                        : _paymentMode == 1
-                        ? 'Create a QR for the amount collected now.'
-                        : 'Create a QR for the full bill total.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  if (_paymentMode == 1) ...[
-                    TextFormField(
-                      key: const Key('sale-advance-amount'),
-                      controller: _advanceAmount,
-                      enabled: enabled,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        labelText: !_hasLines
-                            ? 'Advance amount'
-                            : 'Advance amount ($_currency)',
-                        helperText: 'The amount can be changed again before each payment is recorded.',
-                      ),
-                      validator: (value) {
-                        try {
-                          final amount = parseMoney(value ?? '');
-                          final total = preview?.totalMinor;
-                          if (total == null || amount < 1 || amount > total) {
-                            return 'Enter an amount greater than zero and no more than the bill total.';
-                          }
-                          return null;
-                        } on AppFailure catch (error) {
-                          return error.message;
-                        }
-                      },
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  DetailHint(
-                    '${_checkout == null ? 'Saving the bill deducts stock.' : 'Stock is deducted only for inventory products added to this bill.'} The next screen shows a QR for your selected full or advance amount. The owner records payment after checking it in the payment app.',
-                  ),
-                  const SizedBox(height: 20),
-                  if (_checkout == null) ...customerFields,
-                  if (_failure != null) ...[
-                    InlineNotice(_failure!.displayMessage, isError: true),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_uncertain) ...[
-                    InlineNotice(
-                      'The save result is not confirmed. Retry this same bill to avoid a duplicate. Reference: $_id',
-                    ),
                     const SizedBox(height: 16),
-                  ],
-                  FilledButton(
-                    key: const Key('save-sale'),
-                    onPressed: _saving || !_hasLines ? null : _save,
-                    child: Text(
-                      _saving
-                          ? 'Saving…'
-                          : _uncertain
-                          ? 'Check and retry sale'
-                          : 'Generate bill',
+                    DetailHint(
+                      '${_checkout == null ? 'Saving the bill deducts stock.' : 'Stock is deducted only for inventory products added to this bill.'} The next screen shows a QR for your selected full or advance amount. The owner records payment after checking it in the payment app.',
                     ),
-                  ),
+                    const SizedBox(height: 20),
+                    if (_failure != null) ...[
+                      InlineNotice(_failure!.displayMessage, isError: true),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_uncertain) ...[
+                      InlineNotice(
+                        'The save result is not confirmed. Retry this same bill to avoid a duplicate. Reference: $_id',
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    FilledButton(
+                      key: const Key('save-sale'),
+                      onPressed: _saving || !_hasLines ? null : _save,
+                      child: Text(
+                        _saving
+                            ? 'Saving…'
+                            : _uncertain
+                            ? 'Check and retry sale'
+                            : 'Generate bill',
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -930,6 +929,14 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
         ),
       ),
     );
+  }
+
+  bool _priceChanged(Product product) {
+    try {
+      return parseMoney(_prices[product.sku]!.text) != product.priceMinor;
+    } on AppFailure {
+      return true;
+    }
   }
 
   Widget _addProductButton(bool enabled) => OutlinedButton.icon(

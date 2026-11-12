@@ -49,7 +49,7 @@ class LocalBusinessDatabase {
     return factory.openDatabase(
       '$directory/hyner_register_$fileKey.db',
       options: OpenDatabaseOptions(
-        version: 11,
+        version: 12,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) async {
           await db.execute('''
@@ -145,6 +145,7 @@ class LocalBusinessDatabase {
           await _createPurchaseOrderTable(db);
           await _createAccountingTable(db);
           await _createBillDocuments(db);
+          await _createPerformanceIndexes(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createPurchaseTables(db);
@@ -239,6 +240,7 @@ class LocalBusinessDatabase {
           if (oldVersion < 11) {
             await db.update('customers', {'whatsappOptIn': 1});
           }
+          if (oldVersion < 12) await _createPerformanceIndexes(db);
         },
       ),
     );
@@ -279,7 +281,7 @@ class LocalBusinessDatabase {
     return {
       'format': 'hyner-local-backup',
       'version': 2,
-      // v11 changes defaults only; the portable table format remains v10.
+      // v11 changes defaults and v12 adds indexes; backup rows remain v10.
       'schemaVersion': 10,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'accountUid': uid,
@@ -547,5 +549,18 @@ Future<void> _createAccountingTable(DatabaseExecutor db) async {
   ''');
   await db.execute(
     'CREATE INDEX accounting_entries_created ON accounting_entries(currency, createdAt DESC, id DESC)',
+  );
+}
+
+/// Additive indexes only: original bill snapshots and identity rules stay intact.
+Future<void> _createPerformanceIndexes(DatabaseExecutor db) async {
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS sales_customer_created ON sales(customerId, createdAt DESC, id DESC)',
+  );
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS sales_followup_due ON sales(followupAt) WHERE followupAt IS NOT NULL',
+  );
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS sales_currency_created ON sales(currency, createdAt DESC, id DESC)',
   );
 }

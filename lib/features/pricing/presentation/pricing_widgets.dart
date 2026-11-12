@@ -1,53 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
+
 import '../application/calculator_session.dart';
 import '../application/product_setup.dart';
 import '../domain/exact.dart';
 import '../domain/universal/universal_pricing.dart';
 
-ThemeData hynerTheme(Brightness brightness) {
-  final scheme =
-      ColorScheme.fromSeed(
-        seedColor: const Color(0xff145a45),
-        brightness: brightness,
-      ).copyWith(
-        surface: brightness == Brightness.light
-            ? const Color(0xfff8faf7)
-            : const Color(0xff111a16),
-      );
-  return ThemeData(
-    fontFamily: 'Roboto',
-    useMaterial3: true,
-    colorScheme: scheme,
-    scaffoldBackgroundColor: scheme.surface,
-    appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
-      surfaceTintColor: Colors.transparent,
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: scheme.surfaceContainerLow,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: scheme.outlineVariant),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
-    ),
-    iconButtonTheme: IconButtonThemeData(
-      style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
-    ),
-    visualDensity: VisualDensity.standard,
-  );
-}
+ThemeData hynerTheme(Brightness brightness) => HynerTheme.build(brightness);
 
 class ValueField extends StatefulWidget {
   const ValueField({
@@ -192,12 +152,15 @@ class MessageLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Text(
-      message,
-      style: TextStyle(
-        color: error
-            ? Theme.of(context).colorScheme.error
-            : Theme.of(context).colorScheme.onSurfaceVariant,
+    child: Semantics(
+      liveRegion: error,
+      child: Text(
+        message,
+        style: TextStyle(
+          color: error
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     ),
   );
@@ -239,19 +202,28 @@ class DynamicInputs extends StatelessWidget {
                 ),
             ],
           ];
-          for (var i = 0; i < fields.length; i++) {
-            final field = fields[i];
+          final choiceControls = fields
+              .where((f) => f.type == InputDataType.choice)
+              .toList();
+          children.insertAll(0, [
+            for (final field in choiceControls) _field(context, field),
+          ]);
+          final measurements = fields
+              .where((f) => f.type != InputDataType.choice)
+              .toList();
+          for (var i = 0; i < measurements.length; i++) {
+            final field = measurements[i];
             if (twoColumns &&
                 field.isNumeric &&
-                i + 1 < fields.length &&
-                fields[i + 1].isNumeric) {
+                i + 1 < measurements.length &&
+                measurements[i + 1].isNumeric) {
               children.add(
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _field(context, field)),
                     const SizedBox(width: 12),
-                    Expanded(child: _field(context, fields[++i])),
+                    Expanded(child: _field(context, measurements[++i])),
                   ],
                 ),
               );
@@ -451,7 +423,7 @@ class PricePanel extends StatelessWidget {
               moneyText(result.amounts.totalMinor, currency),
               key: const ValueKey('price-total'),
               style: TextStyle(
-                fontSize: compact ? 28 : 40,
+                fontSize: compact ? 28 : 34,
                 height: 1.15,
                 fontWeight: FontWeight.w800,
                 color: scheme.primary,
@@ -459,11 +431,12 @@ class PricePanel extends StatelessWidget {
               ),
             ),
           ),
-          for (final warning in result.warnings.toSet())
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(warning, style: TextStyle(color: scheme.tertiary)),
-            ),
+          if (!summaryOnly)
+            for (final warning in result.warnings.toSet())
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(warning, style: TextStyle(color: scheme.tertiary)),
+              ),
           if (!compact && !summaryOnly) ...[
             const SizedBox(height: 6),
             Text(

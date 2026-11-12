@@ -8,20 +8,28 @@ import '../../customers/domain/customer.dart';
 import '../../inventory/data/inventory_codec.dart';
 import '../../inventory/domain/product.dart';
 import '../domain/sale.dart';
+import '../domain/sale_search.dart';
 import '../domain/sale_price_snapshot.dart';
 import '../domain/sales_repository.dart';
 
 const _pageSize = 30;
 
 class LocalSalesRepository implements SalesRepository {
-  LocalSalesRepository(this._store);
+  LocalSalesRepository(this._store, {DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
+  final DateTime Function() _clock;
   final LocalBusinessDatabase _store;
 
   @override
   String newSaleId() => _localId();
 
   @override
-  Future<SalesPage> list(String uid, {SalesCursor? after}) async {
+  Future<SalesPage> list(
+    String uid, {
+    SalesCursor? after,
+    String search = '',
+  }) async {
+    if (search.trim().isNotEmpty) return _search(uid, search, after);
     _checkOwner(uid);
     final db = await _store.databaseFor(uid);
     final rows = await db.query(
@@ -46,6 +54,125 @@ class LocalSalesRepository implements SalesRepository {
       page,
       hasNext && last != null ? SalesCursor(last.createdAt, last.id) : null,
     );
+  }
+
+  Future<SalesPage> _search(String uid, String text, SalesCursor? after) async {
+    _checkOwner(uid);
+    if (text.length > 120) {
+      throw inventoryInvalid('Keep bill searches within 120 characters.');
+    }
+    final db = await _store.databaseFor(uid);
+    final query = SaleSearch(text);
+    final matches = <Sale>[];
+    var cursor = after;
+    // Bounded scanning also supports old bills and Android SQLite versions
+    // without JSON SQL functions. Do not search just the first loaded page.
+    while (true) {
+      final rows = await db.query(
+        'sales',
+        where: cursor == null
+            ? null
+            : 'createdAt < ? OR (createdAt = ? AND id < ?)',
+        whereArgs: cursor == null
+            ? null
+            : [
+                cursor.time.toUtc().toIso8601String(),
+                cursor.time.toUtc().toIso8601String(),
+                cursor.id,
+              ],
+        orderBy: 'createdAt DESC, id DESC',
+        limit: 64,
+      );
+      for (final row in rows) {
+        if (query.contactMatches(
+          row['customerName'] as String?,
+          row['customerPhone'] as String?,
+          row['id']! as String,
+        )) {
+          matches.add(_saleFromRow(row));
+        } else if (query.amountMinor != null) {
+          final sale = _saleFromRow(row);
+          if (sale.draft.totalMinor == query.amountMinor) matches.add(sale);
+        }
+        if (matches.length > _pageSize) {
+          final page = matches.take(_pageSize).toList();
+          return SalesPage(
+            page,
+            SalesCursor(page.last.createdAt, page.last.id),
+          );
+        }
+      }
+      if (rows.length < 64) return SalesPage(matches, null);
+      cursor = SalesCursor(
+        DateTime.parse(rows.last['createdAt']! as String),
+        rows.last['id']! as String,
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  @override
+  Future<void> updateContact(
+    String uid,
+    String id, {
+    required String name,
+    required String phone,
+    required String? expectedName,
+    required String? expectedPhone,
+  }) async {
+    _checkOwner(uid);
+    final trimmedName = name.trim(), trimmedPhone = phone.trim();
+    CustomerDraft(name: trimmedName, phone: trimmedPhone).validate();
+    if (!validCustomerMobile(trimmedPhone)) {
+      throw inventoryInvalid('Enter a valid customer mobile number.');
+    }
+    final db = await _store.databaseFor(uid);
+    await db.transaction((tx) async {
+      final rows = await tx.query(
+        'sales',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw inventoryInvalid('This bill could not be found.');
+      final prior = _saleFromRow(rows.single);
+      final now = _clock().toUtc();
+      if (!prior.canEditContactAt(now)) {
+        throw inventoryInvalid(
+          'Customer details are locked seven days after bill creation.',
+        );
+      }
+      if (prior.draft.customerName == trimmedName &&
+          prior.draft.customerPhone == trimmedPhone) {
+        return;
+      }
+      if (prior.draft.customerName != expectedName ||
+          prior.draft.customerPhone != expectedPhone) {
+        throw inventoryInvalid(
+          'This bill’s contact details changed. Reload it before editing again.',
+        );
+      }
+      // Amend this bill only: never rename another bill or change directory
+      // identity/consent, money, stock, payments, reference or the original archive.
+      await tx.update(
+        'sales',
+        {'customerName': trimmedName, 'customerPhone': trimmedPhone},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await tx.insert('settings', {
+        'key': 'bill-contact-edit/$id/${_localId()}',
+        'value': jsonEncode({
+          'version': 1,
+          'billId': id,
+          'changedAt': now.toIso8601String(),
+          'previousName': prior.draft.customerName,
+          'previousPhone': prior.draft.customerPhone,
+          'name': trimmedName,
+          'phone': trimmedPhone,
+        }),
+      });
+    });
   }
 
   @override

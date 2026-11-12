@@ -125,6 +125,12 @@ class BusinessReport {
   final int otherExpenseCount;
   final BigInt? otherExpenseMinor;
   final List<ReportExpenseRecord> expenseRecords;
+
+  /// Stock purchases are not subtracted again: saved sold-item costs already
+  /// contribute to gross profit. Uncosted bills are excluded by the repository.
+  BigInt get earningsAfterCostsMinor =>
+      grossProfitMinor - operatingExpensesMinor;
+  bool get hasIncompleteCosts => uncostedSalesCount > 0;
   BigInt get operatingExpensesMinor => otherExpenseMinor ?? BigInt.zero;
   BigInt get netPurchasesMinor => purchaseSpendMinor - returnValueMinor;
   BigInt get totalExpenseMinor => netPurchasesMinor + operatingExpensesMinor;

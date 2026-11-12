@@ -301,64 +301,73 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   sliver: SliverList.separated(
                     itemCount: state.products.length,
-                    separatorBuilder: (_, index) => const Divider(),
+                    separatorBuilder: (_, index) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final product = state.products[index];
-                      return InkWell(
-                        key: ValueKey('product-${product.sku}'),
-                        onTap: () =>
-                            context.push<void>('/inventory/${product.sku}'),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      product.name,
-                                      style: theme.textTheme.titleMedium,
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: theme.colorScheme.outlineVariant,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          key: ValueKey('product-${product.sku}'),
+                          onTap: () =>
+                              context.push<void>('/inventory/${product.sku}'),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        product.name,
+                                        style: theme.textTheme.titleMedium,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(Icons.chevron_right_rounded),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                '${product.sku}${product.category.isEmpty ? '' : ' · ${product.category}'}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 6,
-                                children: [
-                                  Text(
-                                    '${product.quantity} units',
-                                    style: theme.textTheme.labelLarge,
-                                  ),
-                                  Text(
-                                    formatMoney(
-                                      product.priceMinor,
-                                      product.currency,
-                                    ),
-                                    style: theme.textTheme.bodySmall,
-                                  ),
-                                  if (product.isLowStock)
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.chevron_right_rounded),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${product.sku}${product.category.isEmpty ? '' : ' · ${product.category}'}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 16,
+                                  runSpacing: 6,
+                                  children: [
                                     Text(
-                                      product.quantity == 0
-                                          ? 'Out of stock'
-                                          : 'Low stock',
-                                      style: theme.textTheme.labelMedium
-                                          ?.copyWith(
-                                            color: theme.colorScheme.error,
-                                          ),
+                                      '${product.quantity} units',
+                                      style: theme.textTheme.labelLarge,
                                     ),
-                                ],
-                              ),
-                            ],
+                                    Text(
+                                      formatMoney(
+                                        product.priceMinor,
+                                        product.currency,
+                                      ),
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                    if (product.isLowStock)
+                                      Text(
+                                        product.quantity == 0
+                                            ? 'Out of stock'
+                                            : 'Low stock',
+                                        style: theme.textTheme.labelMedium
+                                            ?.copyWith(
+                                              color: theme.colorScheme.error,
+                                            ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );

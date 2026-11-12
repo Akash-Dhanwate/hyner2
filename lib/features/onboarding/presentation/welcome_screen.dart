@@ -52,55 +52,19 @@ class WelcomeScreen extends ConsumerWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 52),
-                        AspectRatio(
-                          aspectRatio: 1.25,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer.withValues(
-                                alpha: .45,
-                              ),
-                              borderRadius: BorderRadius.circular(36),
-                            ),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Positioned.fill(
-                                  child: CustomPaint(
-                                    painter: _WelcomePattern(
-                                      scheme.primary.withValues(alpha: .12),
-                                    ),
-                                  ),
-                                ),
-                                const HynerMark(size: 128),
-                                Positioned(
-                                  bottom: 26,
-                                  child: Text(
-                                    'BUSINESS, IN ORDER.',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      letterSpacing: 2.4,
-                                      color: scheme.primary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 36),
+                        const SizedBox(height: 40),
                         Text(
-                          'Your business.\nA little clearer.',
-                          style: theme.textTheme.displaySmall,
+                          'Prices, stock and bills.',
+                          style: theme.textTheme.headlineMedium,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         Text(
-                          'A considered space for the business you’re building.',
+                          'Calculate an item, build a bill and keep customer records together.',
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(height: 36),
+                        const SizedBox(height: 24),
                         if (failure != null) ...[
                           InlineNotice(failure.displayMessage, isError: true),
                           const SizedBox(height: 20),
@@ -126,22 +90,16 @@ class WelcomeScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 12),
                         ],
-                        FilledButton(
-                          onPressed: () => context.push<void>('/sign-in'),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  'Get started',
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Icon(Icons.arrow_forward_rounded, size: 20),
-                            ],
+                        if (ref.read(dependenciesProvider).auth is DeviceAccess)
+                          OutlinedButton(
+                            onPressed: () => context.push<void>('/sign-in'),
+                            child: const Text('Sign in or create account'),
+                          )
+                        else
+                          FilledButton(
+                            onPressed: () => context.push<void>('/sign-in'),
+                            child: const Text('Sign in or create account'),
                           ),
-                        ),
                         const SizedBox(height: 18),
                         Text(
                           'Products, bills and rates stay on this device.',
@@ -166,35 +124,4 @@ class WelcomeScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _WelcomePattern extends CustomPainter {
-  _WelcomePattern(this.color);
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.clipRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(36)),
-    );
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    for (final scale in [.62, .86, 1.1]) {
-      final rect = Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * .46),
-        width: size.width * scale,
-        height: size.width * scale,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(48)),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WelcomePattern oldDelegate) =>
-      oldDelegate.color != color;
 }

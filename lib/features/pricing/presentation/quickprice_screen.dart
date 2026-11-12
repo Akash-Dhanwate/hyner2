@@ -487,7 +487,14 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                                         .titleMedium,
                                   ),
                                 const SizedBox(height: 18),
-                                if (products.length <= 8)
+                                if (products.length == 1)
+                                  Text(
+                                    products.single.name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium,
+                                  )
+                                else if (products.length <= 8)
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 6,
@@ -537,26 +544,22 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                                 DynamicInputs(session: session),
                                 QuantityControl(session: session),
                                 if (session.availableBaseRateText != null)
-                                  ExpansionTile(
-                                    key: ValueKey(
-                                      'price-options-${session.product!.id}',
-                                    ),
-                                    tilePadding: EdgeInsets.zero,
-                                    title: const Text(
-                                      'Change price for this calculation',
-                                    ),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       ValueField(
                                         key: ValueKey(
                                           'calculation-rate-${session.product!.id}',
                                         ),
                                         label:
-                                            'Rate (${card!.card.currency.code} / ${unitShort[session.availableBaseRateUnit] ?? session.availableBaseRateUnit})',
+                                            'Customer rate (${card!.card.currency.code} / ${unitShort[session.availableBaseRateUnit] ?? session.availableBaseRateUnit})',
                                         value:
                                             session.baseRateOverrideText ??
                                             session.availableBaseRateText!,
                                         numeric: true,
-                                        helper: 'For this calculation only. Use Edit selling rates to change the saved rate.',
+                                        helper:
+                                            'Saved rate: ${session.availableBaseRateText}. Change for this item only.',
                                         onChanged: session.setBaseRateOverride,
                                       ),
                                       if (session.hasBaseRateOverride)
@@ -589,24 +592,6 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                                 ],
                                 if (persistenceError != null)
                                   MessageLine(persistenceError!, error: true),
-                                if (compact) ...[
-                                  const SizedBox(height: 16),
-                                  TextButton(
-                                    onPressed: () => showModalBottomSheet<void>(
-                                      context: context,
-                                      useSafeArea: true,
-                                      isScrollControlled: true,
-                                      builder: (_) => SingleChildScrollView(
-                                        padding: const EdgeInsets.all(24),
-                                        child: PricePanel(
-                                          session: session,
-                                          expandBreakdown: true,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Text('Price breakdown'),
-                                  ),
-                                ],
                                 const SizedBox(height: 16),
                               ],
                             ),
@@ -640,40 +625,11 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                                     children: [
                                       PricePanel(
                                         session: session,
-                                        compact: compact,
+                                        compact: true,
                                         breakdown: false,
                                         summaryOnly: true,
                                         title: 'Current item total',
                                       ),
-                                      if (!compact && session.result != null)
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: TextButton.icon(
-                                            onPressed: () =>
-                                                showModalBottomSheet<void>(
-                                                  context: context,
-                                                  isScrollControlled: true,
-                                                  useSafeArea: true,
-                                                  builder: (_) =>
-                                                      SingleChildScrollView(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              24,
-                                                            ),
-                                                        child: PricePanel(
-                                                          session: session,
-                                                          expandBreakdown: true,
-                                                        ),
-                                                      ),
-                                                ),
-                                            icon: const Icon(
-                                              Icons.receipt_long_outlined,
-                                            ),
-                                            label: const Text(
-                                              'Price breakdown',
-                                            ),
-                                          ),
-                                        ),
                                       const SizedBox(height: 8),
                                       FilledButton.icon(
                                         key: const Key('add-to-estimate'),
@@ -709,35 +665,7 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                                           ),
                                         ),
                                       const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: FilledButton.tonalIcon(
-                                              onPressed: session.result == null
-                                                  ? null
-                                                  : _copy,
-                                              icon: const Icon(
-                                                Icons.copy_outlined,
-                                              ),
-                                              label: const Text('Copy price'),
-                                            ),
-                                          ),
-                                          if (!kIsWeb &&
-                                              defaultTargetPlatform ==
-                                                  TargetPlatform.android) ...[
-                                            const SizedBox(width: 12),
-                                            IconButton.outlined(
-                                              tooltip: 'Share price',
-                                              onPressed: session.result == null
-                                                  ? null
-                                                  : () => _copy(share: true),
-                                              icon: const Icon(
-                                                Icons.share_outlined,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
+                                      _secondaryActions(),
                                     ],
                                   ),
                                 ),
@@ -753,6 +681,59 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       ),
     );
   }
+
+  Widget _secondaryActions() {
+    final large = MediaQuery.textScalerOf(context).scale(16) > 22;
+    final copy = TextButton(
+      onPressed: session.result == null ? null : _copy,
+      child: const Text('Copy price', textAlign: TextAlign.center),
+    );
+    final breakdown = TextButton(
+      onPressed: session.result == null ? null : _showBreakdown,
+      child: const Text('Price breakdown', textAlign: TextAlign.center),
+    );
+    final canShare = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (large) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          copy,
+          breakdown,
+          if (canShare)
+            TextButton.icon(
+              onPressed: session.result == null
+                  ? null
+                  : () => _copy(share: true),
+              icon: const Icon(Icons.share_outlined),
+              label: const Text('Share price'),
+            ),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: copy),
+        Expanded(child: breakdown),
+        if (canShare)
+          IconButton(
+            tooltip: 'Share price',
+            onPressed: session.result == null ? null : () => _copy(share: true),
+            icon: const Icon(Icons.share_outlined),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showBreakdown() => showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: PricePanel(session: session, expandBreakdown: true),
+    ),
+  );
 
   Widget _emptyView() => ListView(
     padding: const EdgeInsets.all(24),

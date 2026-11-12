@@ -79,10 +79,10 @@ void main() {
       await tester.enterText(input('height'), '0');
       await tester.pump();
       expect(find.text('₹8,400.00'), findsNothing);
-      final copy = tester.widget<FilledButton>(
+      final copy = tester.widget<TextButton>(
         find.ancestor(
           of: find.text('Copy price'),
-          matching: find.byType(FilledButton),
+          matching: find.byType(TextButton),
         ),
       );
       expect(copy.onPressed, isNull);

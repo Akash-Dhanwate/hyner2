@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../app/routing/workspace_navigation.dart';
 import '../../../app/bootstrap/app_dependencies.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/storage/backup_service.dart';
 import '../../inventory/presentation/inventory_controller.dart';
@@ -25,7 +25,7 @@ class SettingsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     return PageContent(
       children: [
-        const Eyebrow('Make it yours'),
+        const Eyebrow('Workspace preferences'),
         const SizedBox(height: 12),
         Text('Settings', style: theme.textTheme.headlineMedium),
         const SizedBox(height: 8),
@@ -33,54 +33,6 @@ class SettingsScreen extends ConsumerWidget {
           'Business records stay on this device. Use Business backup to export a portable copy before changing phones or clearing app data.',
         ),
         const SizedBox(height: 16),
-        const _BackupExport(),
-        const SizedBox(height: 32),
-        const Eyebrow('Notifications'),
-        const SizedBox(height: 8),
-        const _NotificationSettings(),
-        const SizedBox(height: 24),
-        const Eyebrow('Appearance'),
-        const SizedBox(height: 12),
-        for (final entry in [
-          (
-            ThemeMode.system,
-            'Use device setting',
-            Icons.brightness_auto_outlined,
-          ),
-          (ThemeMode.light, 'Light', Icons.light_mode_outlined),
-          (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
-        ])
-          ListTile(
-            leading: Icon(entry.$3, size: 22),
-            title: Text(entry.$2),
-            trailing: Icon(
-              mode == entry.$1
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color: mode == entry.$1
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            selected: mode == entry.$1,
-            onTap: () async {
-              try {
-                await ref
-                    .read(themeControllerProvider.notifier)
-                    .select(entry.$1);
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Your appearance setting could not be saved. Please try again.',
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-          ),
-        const SizedBox(height: 24),
         _UpiSettingsForm(key: ValueKey(ref.watch(inventoryUidProvider))),
         const SizedBox(height: 24),
         ListTile(
@@ -92,6 +44,66 @@ class SettingsScreen extends ConsumerWidget {
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () =>
               openWorkspacePage(GoRouter.of(context), '/bill-settings'),
+        ),
+        const SizedBox(height: 24),
+        DisclosureSection(
+          title: 'App appearance',
+          summary: switch (mode) {
+            ThemeMode.system => 'Use device setting',
+            ThemeMode.light => 'Light',
+            ThemeMode.dark => 'Dark',
+          },
+          children: [
+            for (final entry in [
+              (
+                ThemeMode.system,
+                'Use device setting',
+                Icons.brightness_auto_outlined,
+              ),
+              (ThemeMode.light, 'Light', Icons.light_mode_outlined),
+              (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
+            ])
+              ListTile(
+                leading: Icon(entry.$3, size: 22),
+                title: Text(entry.$2),
+                trailing: Icon(
+                  mode == entry.$1
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: mode == entry.$1
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                selected: mode == entry.$1,
+                onTap: () async {
+                  try {
+                    await ref
+                        .read(themeControllerProvider.notifier)
+                        .select(entry.$1);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Your appearance setting could not be saved. Please try again.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+          ],
+        ),
+        DisclosureSection(
+          title: 'Notifications',
+          summary: 'Low-stock and activity alerts',
+          children: [const _NotificationSettings()],
+        ),
+        DisclosureSection(
+          title: 'Business backup',
+          summary: 'Export or restore local records',
+          children: [const _BackupExport()],
         ),
         const SizedBox(height: 24),
         const Divider(),
@@ -113,7 +125,7 @@ class SettingsScreen extends ConsumerWidget {
         Text('Hyner', style: theme.textTheme.titleLarge),
         const SizedBox(height: 6),
         Text(
-          'Version 0.6.0 · Business workspace and QuickPrice',
+          'Version 0.7.0 · Business workspace and QuickPrice',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -199,8 +211,6 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Eyebrow('Business backup'),
-      const SizedBox(height: 8),
       const Text(
         'Export products, stock history, customers, sales, purchases, returns, expenses and settings as a portable backup file.',
       ),
@@ -735,16 +745,22 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
         textCapitalization: TextCapitalization.words,
         decoration: const InputDecoration(
           labelText: 'Business name',
-          helperText: 'Shown on bills and in UPI payment details.',
+          counterText: '',
+          helperText: 'Shown on bills and UPI QR.',
           helperMaxLines: 3,
         ),
       ),
       const SizedBox(height: 12),
       TextField(
         controller: _phone,
+        keyboardType: TextInputType.phone,
+        autofillHints: const [AutofillHints.telephoneNumber],
         enabled: _editable,
         maxLength: 40,
-        decoration: const InputDecoration(labelText: 'Business phone'),
+        decoration: const InputDecoration(
+          labelText: 'Business phone',
+          counterText: '',
+        ),
       ),
       const SizedBox(height: 12),
       TextField(
@@ -752,181 +768,226 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
         enabled: _editable,
         maxLength: 240,
         maxLines: 2,
-        decoration: const InputDecoration(labelText: 'Business address'),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _taxId,
-        enabled: _editable,
-        maxLength: 40,
         decoration: const InputDecoration(
-          labelText: 'Tax ID / GSTIN (optional)',
+          labelText: 'Business address',
+          counterText: '',
         ),
       ),
       const SizedBox(height: 12),
-      TextField(
-        controller: _footer,
-        enabled: _editable,
-        maxLength: 160,
-        decoration: const InputDecoration(labelText: 'Footer message'),
+      DisclosureSection(
+        title: 'Additional bill details',
+        summary: 'Tax ID and footer message',
+        children: [
+          TextField(
+            controller: _taxId,
+            enabled: _editable,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: 'Tax ID / GSTIN (optional)',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _footer,
+            enabled: _editable,
+            maxLength: 160,
+            decoration: const InputDecoration(labelText: 'Footer message'),
+          ),
+          const SizedBox(height: 8),
+        ],
       ),
-      const SizedBox(height: 8),
-      Text('Bill font colours', style: Theme.of(context).textTheme.titleMedium),
-      const DetailHint(
-        'Choose a colour for each section using a hex code: #000000 for black, #C62828 for red, #1565C0 for blue. Colours appear in shared PDFs, including WhatsApp.',
-        title: 'Font colours',
-      ),
-      for (final section in BillTextSection.values) ...[
-        TextFormField(
-          key: ValueKey((_loaded, section)),
-          controller: _colorFields[section],
-          enabled: _editable,
-          maxLength: 7,
-          decoration: InputDecoration(
-            labelText: '${section.label} colour',
-            suffixIcon: PopupMenuButton<int>(
-              tooltip: 'Choose ${section.label} colour',
+      DisclosureSection(
+        title: 'Typography and colours',
+        summary: 'Section colours, title size and header layout',
+        revealError: _invalidColors.isNotEmpty,
+        children: [
+          Text(
+            'Bill font colours',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const DetailHint(
+            'Choose a colour for each section using a hex code: #000000 for black, #C62828 for red, #1565C0 for blue. Colours appear in shared PDFs, including WhatsApp.',
+            title: 'Font colours',
+          ),
+          for (final section in BillTextSection.values) ...[
+            TextFormField(
+              key: ValueKey((_loaded, section)),
+              controller: _colorFields[section],
               enabled: _editable,
-              icon: const Icon(Icons.palette_outlined),
-              itemBuilder: (_) => [
-                for (final entry in const {
-                  0x000000: 'Black',
-                  0xc62828: 'Red',
-                  0x1565c0: 'Blue',
-                  0x2e7d32: 'Green',
-                  0x6a1b9a: 'Purple',
-                  0x64707d: 'Grey',
-                }.entries)
-                  PopupMenuItem(
-                    value: entry.key,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          color: Color(0xff000000 | entry.key),
+              maxLength: 7,
+              decoration: InputDecoration(
+                labelText: '${section.label} colour',
+                suffixIcon: PopupMenuButton<int>(
+                  tooltip: 'Choose ${section.label} colour',
+                  enabled: _editable,
+                  icon: const Icon(Icons.palette_outlined),
+                  itemBuilder: (_) => [
+                    for (final entry in const {
+                      0x000000: 'Black',
+                      0xc62828: 'Red',
+                      0x1565c0: 'Blue',
+                      0x2e7d32: 'Green',
+                      0x6a1b9a: 'Purple',
+                      0x64707d: 'Grey',
+                    }.entries)
+                      PopupMenuItem(
+                        value: entry.key,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              color: Color(0xff000000 | entry.key),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(entry.value),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Text(entry.value),
-                      ],
-                    ),
-                  ),
-              ],
-              onSelected: (color) => setState(() {
-                _fontColors[section] = color;
-                _invalidColors.remove(section);
-                _colorFields[section]!.text =
-                    '#${color.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+                      ),
+                  ],
+                  onSelected: (color) => setState(() {
+                    _fontColors[section] = color;
+                    _invalidColors.remove(section);
+                    _colorFields[section]!.text =
+                        '#${color.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+                  }),
+                ),
+                hintText: '#C62828',
+                counterText: '',
+                prefixIcon: Icon(
+                  Icons.circle,
+                  color: Color(0xff000000 | (_fontColors[section] ?? 0x19212b)),
+                ),
+                errorText: _invalidColors.contains(section)
+                    ? 'Use # followed by six hex digits.'
+                    : null,
+              ),
+              onChanged: (text) => setState(() {
+                final valid = RegExp(r'^#?[0-9a-fA-F]{6}$')
+                    .hasMatch(text.trim());
+                if (valid) {
+                  _invalidColors.remove(section);
+                  _fontColors[section] = int.parse(
+                    text.trim().replaceFirst('#', ''),
+                    radix: 16,
+                  );
+                } else {
+                  _invalidColors.add(section);
+                }
               }),
             ),
-            hintText: '#C62828',
-            counterText: '',
-            prefixIcon: Icon(
-              Icons.circle,
-              color: Color(0xff000000 | (_fontColors[section] ?? 0x19212b)),
-            ),
-            errorText: _invalidColors.contains(section)
-                ? 'Use # followed by six hex digits.'
-                : null,
+            const SizedBox(height: 14),
+          ],
+          Text('Header title size: ${_fontSize.round()}'),
+          Slider(
+            value: _fontSize,
+            min: 14,
+            max: 32,
+            divisions: 18,
+            label: '${_fontSize.round()}',
+            onChanged: !_editable
+                ? null
+                : (value) => setState(() => _fontSize = value),
           ),
-          onChanged: (text) => setState(() {
-            final valid = RegExp(r'^#?[0-9a-fA-F]{6}$').hasMatch(text.trim());
-            if (valid) {
-              _invalidColors.remove(section);
-              _fontColors[section] = int.parse(
-                text.trim().replaceFirst('#', ''),
-                radix: 16,
-              );
-            } else {
-              _invalidColors.add(section);
-            }
-          }),
-        ),
-        const SizedBox(height: 14),
-      ],
-      Text('Header title size: ${_fontSize.round()}'),
-      Slider(
-        value: _fontSize,
-        min: 14,
-        max: 32,
-        divisions: 18,
-        label: '${_fontSize.round()}',
-        onChanged: !_editable
-            ? null
-            : (value) => setState(() => _fontSize = value),
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<BillLayout>(
-        key: ValueKey((_loading, _layout)),
-        isExpanded: true,
-        initialValue: _layout,
-        decoration: const InputDecoration(labelText: 'Bill header layout'),
-        selectedItemBuilder: (context) => const [
-          Text('Right aligned', maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('Centered', maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<BillLayout>(
+            key: ValueKey((_loading, _layout)),
+            isExpanded: true,
+            initialValue: _layout,
+            decoration: const InputDecoration(labelText: 'Bill header layout'),
+            selectedItemBuilder: (context) => const [
+              Text(
+                'Right aligned',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text('Centered', maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+            items: const [
+              DropdownMenuItem(
+                value: BillLayout.right,
+                child: Text('Business details on the right'),
+              ),
+              DropdownMenuItem(
+                value: BillLayout.centered,
+                child: Text('Business details in the center'),
+              ),
+            ],
+            onChanged: !_editable
+                ? null
+                : (value) {
+                    if (value != null) setState(() => _layout = value);
+                  },
+          ),
+          const SizedBox(height: 12),
         ],
-        items: const [
-          DropdownMenuItem(
-            value: BillLayout.right,
-            child: Text('Business details on the right'),
-          ),
-          DropdownMenuItem(
-            value: BillLayout.centered,
-            child: Text('Business details in the center'),
-          ),
-        ],
-        onChanged: !_editable
-            ? null
-            : (value) {
-                if (value != null) setState(() => _layout = value);
-              },
       ),
-      const SizedBox(height: 12),
-      const Text(
-        'PNG, JPEG or WebP, up to 8 MB. Images are resized for bills.',
-      ),
-      const SizedBox(height: 12),
-      if (_logoBase64.isNotEmpty) ...[
-        _SettingsImagePreview(label: 'Shop logo', encoded: _logoBase64),
-        const SizedBox(height: 12),
-      ],
-      if (_signatureBase64.isNotEmpty) ...[
-        _SettingsImagePreview(label: 'Signature', encoded: _signatureBase64),
-        const SizedBox(height: 12),
-      ],
-      if (_picking) ...[
-        const LinearProgressIndicator(semanticsLabel: 'Preparing bill image'),
-        const SizedBox(height: 12),
-      ],
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      DisclosureSection(
+        title: 'Logo and signature',
+        summary: 'Images for printed and shared bills',
+        initiallyExpanded:
+            _logoBase64.isNotEmpty || _signatureBase64.isNotEmpty,
         children: [
-          OutlinedButton.icon(
-            onPressed: !_editable ? null : () => _pickImage(signature: false),
-            icon: const Icon(Icons.add_photo_alternate_outlined),
-            label: Text(_logoBase64.isEmpty ? 'Add shop logo' : 'Replace logo'),
+          const Text(
+            'PNG, JPEG or WebP, up to 8 MB. Images are resized for bills.',
           ),
-          OutlinedButton.icon(
-            onPressed: !_editable ? null : () => _pickImage(signature: true),
-            icon: const Icon(Icons.draw_outlined),
-            label: Text(
-              _signatureBase64.isEmpty ? 'Add signature' : 'Replace signature',
+          const SizedBox(height: 12),
+          if (_logoBase64.isNotEmpty) ...[
+            _SettingsImagePreview(label: 'Shop logo', encoded: _logoBase64),
+            const SizedBox(height: 12),
+          ],
+          if (_signatureBase64.isNotEmpty) ...[
+            _SettingsImagePreview(
+              label: 'Signature',
+              encoded: _signatureBase64,
             ),
+            const SizedBox(height: 12),
+          ],
+          if (_picking) ...[
+            const LinearProgressIndicator(
+              semanticsLabel: 'Preparing bill image',
+            ),
+            const SizedBox(height: 12),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: !_editable
+                    ? null
+                    : () => _pickImage(signature: false),
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: Text(
+                  _logoBase64.isEmpty ? 'Add shop logo' : 'Replace logo',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: !_editable
+                    ? null
+                    : () => _pickImage(signature: true),
+                icon: const Icon(Icons.draw_outlined),
+                label: Text(
+                  _signatureBase64.isEmpty
+                      ? 'Add signature'
+                      : 'Replace signature',
+                ),
+              ),
+              if (_logoBase64.isNotEmpty)
+                TextButton(
+                  onPressed: !_editable
+                      ? null
+                      : () => setState(() => _logoBase64 = ''),
+                  child: const Text('Remove logo'),
+                ),
+              if (_signatureBase64.isNotEmpty)
+                TextButton(
+                  onPressed: !_editable
+                      ? null
+                      : () => setState(() => _signatureBase64 = ''),
+                  child: const Text('Remove signature'),
+                ),
+            ],
           ),
-          if (_logoBase64.isNotEmpty)
-            TextButton(
-              onPressed: !_editable
-                  ? null
-                  : () => setState(() => _logoBase64 = ''),
-              child: const Text('Remove logo'),
-            ),
-          if (_signatureBase64.isNotEmpty)
-            TextButton(
-              onPressed: !_editable
-                  ? null
-                  : () => setState(() => _signatureBase64 = ''),
-              child: const Text('Remove signature'),
-            ),
         ],
       ),
       if (_error != null) ...[
@@ -956,23 +1017,68 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
   );
 }
 
-class _SettingsImagePreview extends StatelessWidget {
+class _SettingsImagePreview extends StatefulWidget {
   const _SettingsImagePreview({required this.label, required this.encoded});
 
   final String label;
   final String encoded;
 
   @override
-  Widget build(BuildContext context) {
-    Uint8List? bytes;
+  State<_SettingsImagePreview> createState() => _SettingsImagePreviewState();
+}
+
+class _SettingsImagePreviewState extends State<_SettingsImagePreview> {
+  ImageProvider? _image;
+
+  @override
+  void initState() {
+    super.initState();
+    _decode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SettingsImagePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.encoded != widget.encoded) {
+      _evict();
+      _decode();
+    }
+  }
+
+  void _evict() {
+    final previous = _image;
+    _image = null;
+    if (previous != null) unawaited(previous.evict());
+  }
+
+  void _decode() {
     try {
-      // Bound legacy/corrupt stored data before decoding it for a preview.
+      final encoded = widget.encoded;
       if (encoded.length <= (maxSavedSettingsImageBytes + 2) ~/ 3 * 4) {
-        bytes = base64Decode(encoded);
+        final bytes = base64Decode(encoded);
+        if (bytes.isNotEmpty) {
+          _image = ResizeImage(
+            MemoryImage(bytes),
+            width: 512,
+            height: 240,
+            policy: ResizeImagePolicy.fit,
+          );
+        }
       }
     } on FormatException {
-      // Keep the remove/replace controls usable for invalid saved images.
+      // Keep the replace/remove controls usable with corrupt legacy images.
     }
+  }
+
+  @override
+  void dispose() {
+    _evict();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.label;
     final unavailable = Text(
       '$label preview unavailable. Replace or remove it.',
     );
@@ -990,18 +1096,13 @@ class _SettingsImagePreview extends StatelessWidget {
             border: Border.all(color: Theme.of(context).colorScheme.outline),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: bytes == null || bytes.isEmpty
+          child: _image == null
               ? DefaultTextStyle.merge(
                   style: const TextStyle(color: Colors.black87),
                   child: unavailable,
                 )
               : Image(
-                  image: ResizeImage(
-                    MemoryImage(bytes),
-                    width: 512,
-                    height: 240,
-                    policy: ResizeImagePolicy.fit,
-                  ),
+                  image: _image!,
                   fit: BoxFit.contain,
                   semanticLabel: '$label preview',
                   errorBuilder: (context, error, stackTrace) =>

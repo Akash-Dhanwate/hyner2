@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 
 class PageContent extends StatelessWidget {
-  const PageContent({super.key, required this.children});
+  const PageContent({super.key, required this.children, this.maxWidth = 820});
   final List<Widget> children;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) => SafeArea(
     top: false,
     child: Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: BoxConstraints(maxWidth: maxWidth),
         child: CustomScrollView(
           slivers: [
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+              padding: EdgeInsets.fromLTRB(
+                MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                24,
+                MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                36,
+              ),
               sliver: SliverList(delegate: SliverChildListDelegate(children)),
             ),
           ],
@@ -71,7 +77,7 @@ class Eyebrow extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     text.toUpperCase(),
     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-      letterSpacing: 1.6,
+      letterSpacing: .8,
       fontWeight: FontWeight.w700,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
@@ -127,16 +133,24 @@ class InlineNotice extends StatelessWidget {
 
 /// Optional help stays out of the main flow until requested.
 class DetailHint extends StatelessWidget {
-  const DetailHint(this.message, {super.key, this.title = 'Details'});
+  const DetailHint(
+    this.message, {
+    super.key,
+    this.title = 'Details',
+    this.actionLabel,
+    this.onAction,
+  });
   final String message;
   final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.centerLeft,
     child: IconButton(
       tooltip: 'View $title',
-      color: Colors.red.shade700,
+      color: Theme.of(context).colorScheme.error,
       icon: const Icon(Icons.visibility_outlined),
       onPressed: () => showDialog<void>(
         context: context,
@@ -144,6 +158,14 @@ class DetailHint extends StatelessWidget {
           title: Text(title),
           content: SingleChildScrollView(child: Text(message)),
           actions: [
+            if (actionLabel != null && onAction != null)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  onAction!();
+                },
+                child: Text(actionLabel!),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),

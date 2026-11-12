@@ -90,9 +90,9 @@ void main() {
     'welcome navigates to Google Sign-In and test authentication opens dashboard',
     (tester) async {
       final container = await mount(tester);
-      expect(find.text('Your business.\nA little clearer.'), findsOneWidget);
-      await tester.ensureVisible(find.text('Get started'));
-      await tester.tap(find.text('Get started'));
+      expect(find.text('Prices, stock and bills.'), findsOneWidget);
+      await tester.ensureVisible(find.text('Sign in or create account'));
+      await tester.tap(find.text('Sign in or create account'));
       await tester.pumpAndSettle();
       expect(find.text('Welcome to Hyner'), findsOneWidget);
       await tester.tap(find.byKey(const Key('google-sign-in')));
@@ -353,13 +353,13 @@ void main() {
     tester,
   ) async {
     final container = await mount(tester);
-    await tester.ensureVisible(find.text('Get started'));
-    await tester.tap(find.text('Get started'));
+    await tester.ensureVisible(find.text('Sign in or create account'));
+    await tester.tap(find.text('Sign in or create account'));
     await tester.pumpAndSettle();
     expect(find.text('Welcome to Hyner'), findsOneWidget);
     expect(await tester.binding.handlePopRoute(), isTrue);
     await tester.pumpAndSettle();
-    expect(find.text('Get started'), findsOneWidget);
+    expect(find.text('Sign in or create account'), findsOneWidget);
     expect(container.read(sessionProvider).isAuthenticated, isFalse);
   });
 
@@ -377,7 +377,7 @@ void main() {
       await reveal(tester, find.byKey(const Key('sign-out')));
       await tester.tap(find.byKey(const Key('sign-out')));
       await tester.pumpAndSettle();
-      expect(find.text('Get started'), findsOneWidget);
+      expect(find.text('Sign in or create account'), findsOneWidget);
       expect(router.canPop(), isFalse);
       expect(await router.routerDelegate.popRoute(), isFalse);
       expect(
@@ -386,7 +386,7 @@ void main() {
       );
       router.go('/inventory');
       await tester.pumpAndSettle();
-      expect(find.text('Get started'), findsOneWidget);
+      expect(find.text('Sign in or create account'), findsOneWidget);
       expect(find.text('Product catalogue'), findsNothing);
     },
   );
@@ -491,6 +491,9 @@ void main() {
   testWidgets('appearance saves and a failed write is visible', (tester) async {
     final container = await mount(tester, restored: true);
     container.read(routerProvider).go('/settings');
+    await tester.pumpAndSettle();
+    await reveal(tester, find.text('App appearance'));
+    await tester.tap(find.text('App appearance'));
     await tester.pumpAndSettle();
     await reveal(tester, find.text('Dark'));
     await tester.tap(find.text('Dark'));

@@ -377,23 +377,34 @@ void main() {
     },
   );
 
-  test('selector-based base rates do not expose an override', () {
-    final draft = setup('perUnit');
-    draft
-        .rows('fields')
-        .add(
-          inputDraft('finish', 'Finish', 'number')..addAll({
-            'type': 'choice',
-            'choices': 'Basic,Premium',
-            'default': 'Basic',
-          }),
-        );
-    draft.rows('rates').first['selectors'] = {'finish': 'Basic'};
-    session.select(draft.compile('shop', currency));
-    expect(session.availableBaseRateText, isNull);
-    expect(session.availableBaseRateUnit, isNull);
-    expect(() => session.setBaseRateOverride('10'), throwsStateError);
-  });
+  test(
+    'selected base rate can be negotiated without removing its selectors',
+    () {
+      final draft = setup('perUnit');
+      draft
+          .rows('fields')
+          .add(
+            inputDraft('finish', 'Finish', 'number')..addAll({
+              'type': 'choice',
+              'choices': 'Basic,Premium',
+              'default': 'Basic',
+            }),
+          );
+      draft.rows('rates').first['selectors'] = {'finish': 'Basic'};
+      session.select(draft.compile('shop', currency));
+      expect(session.availableBaseRateText, '150');
+      expect(session.availableBaseRateUnit, 'piece');
+      session.setBaseRateOverride('10');
+      expect(session.result!.amounts.totalMinor, BigInt.from(1000));
+      expect(session.result!.rule.rateLookup.rates.single.selectors, {
+        'finish': 'Basic',
+      });
+      session.change('finish', 'choice', 'Premium');
+      expect(session.availableBaseRateText, isNull);
+      expect(session.result, isNull);
+      expect(() => session.setBaseRateOverride('10'), throwsStateError);
+    },
+  );
 
   test(
     'restore bounds and checks source projection rather than trusting flags',

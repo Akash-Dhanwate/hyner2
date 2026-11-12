@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -68,6 +69,80 @@ void main() {
     await store.close();
     await directory.delete(recursive: true);
   });
+
+  test(
+    'metadata lookup and concurrent generation keep one immutable archive',
+    () async {
+      await seed(uid, 'single-flight');
+      var generated = 0;
+      final gate = Completer<void>();
+      final first = pdf('original archived content');
+      Future<Uint8List> generate() async {
+        generated++;
+        await gate.future;
+        return first;
+      }
+
+      final jobs = [
+        documents.ensureDuplicate(uid, 'single-flight', generate),
+        documents.ensureDuplicate(uid, 'single-flight', generate),
+      ];
+      await Future<void>.delayed(Duration.zero);
+      gate.complete();
+      await Future.wait(jobs);
+      expect(generated, 1);
+      expect(await documents.hasDuplicate(uid, 'single-flight'), isTrue);
+      expect(
+        await documents.duplicate(uid, 'single-flight'),
+        orderedEquals(first),
+      );
+      await documents.ensureDuplicate(uid, 'single-flight', () async {
+        fail('Existing archive must not be regenerated');
+      });
+      final db = await store.databaseFor(uid);
+      await db.update(
+        'bill_documents',
+        {
+          'duplicatePdf': Uint8List.fromList([1, 2, 3]),
+          'encoding': 'pdf',
+        },
+        where: 'saleId = ?',
+        whereArgs: ['single-flight'],
+      );
+      expect(await documents.hasDuplicate(uid, 'single-flight'), isTrue);
+      await expectLater(
+        documents.duplicate(uid, 'single-flight'),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
+    'failed archive job can retry and account jobs remain separate',
+    () async {
+      await seed(uid, 'retry');
+      await seed('other', 'retry');
+      await expectLater(
+        documents.ensureDuplicate(
+          uid,
+          'retry',
+          () async => throw StateError('retryable'),
+        ),
+        throwsStateError,
+      );
+      final first = pdf('owner archive'), second = pdf('other account');
+      await Future.wait([
+        documents.ensureDuplicate(uid, 'retry', () async => first),
+        documents.ensureDuplicate('other', 'retry', () async => second),
+      ]);
+      expect(await documents.duplicate(uid, 'retry'), orderedEquals(first));
+      expect(
+        await documents.duplicate('other', 'retry'),
+        orderedEquals(second),
+      );
+      expect(await documents.hasDuplicate('other', 'missing'), isFalse);
+    },
+  );
 
   test(
     'archive is durable, first-write-wins, and returns independent bytes',

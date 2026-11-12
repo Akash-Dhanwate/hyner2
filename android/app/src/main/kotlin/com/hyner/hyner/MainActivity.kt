@@ -12,6 +12,7 @@ import android.net.Uri
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -21,6 +22,8 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : FlutterActivity() {
     private var notificationPermissionResult: MethodChannel.Result? = null
@@ -28,6 +31,22 @@ class MainActivity : FlutterActivity() {
     private var profilePhotoUid: String? = null
     private var billPdfResult: MethodChannel.Result? = null
     private var billPdfBytes: ByteArray? = null
+    private val fileWork = FileWorkQueue { action -> runOnUiThread(action) }
+    // Current-process handoffs are protected for the whole process, even if very old.
+    private val sharePrefix = SHARE_SESSION_PREFIX
+
+    override fun onDestroy() {
+        fileWork.close()
+        for (pending in listOf(notificationPermissionResult, profilePhotoResult, billPdfResult)) {
+            pending?.error("activity-closed", "The activity closed before the operation completed.", null)
+        }
+        notificationPermissionResult = null
+        profilePhotoResult = null
+        profilePhotoUid = null
+        billPdfResult = null
+        billPdfBytes = null
+        super.onDestroy()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -184,14 +203,16 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
                 return
             }
-            try {
-                val output = contentResolver.openOutputStream(uri, "wt")
-                    ?: throw IllegalStateException("The PDF destination could not be opened.")
-                output.use { it.write(bytes) }
-                result.success(uri.toString())
-            } catch (_: Exception) {
-                result.error("save-failed", "The PDF could not be written to this location.", null)
-            }
+            fileWork.submit(
+                action = {
+                    val output = contentResolver.openOutputStream(uri, "wt")
+                        ?: throw IllegalStateException("The PDF destination could not be opened.")
+                    output.use { it.write(bytes) }
+                    uri.toString()
+                },
+                success = { result.success(it) },
+                failure = { result.error("save-failed", "The PDF could not be written to this location.", null) },
+            )
             return
         }
         if (requestCode != PROFILE_PHOTO_REQUEST) return
@@ -205,24 +226,40 @@ class MainActivity : FlutterActivity() {
             result.success(null)
             return
         }
-        try {
-            result.success(saveProfilePhoto(uri, uid))
-        } catch (error: Exception) {
-            result.error("photo-save", "The selected photo could not be saved on this device.", error.message)
-        }
+        fileWork.submit(
+            action = { saveProfilePhoto(uri, uid) },
+            success = { result.success(it) },
+            failure = { error -> result.error("photo-save", "The selected photo could not be saved on this device.", error.message) },
+        )
     }
 
     private fun shareBillPdf(bytes: ByteArray, filename: String, result: MethodChannel.Result) {
+        fileWork.submit(
+            action = {
+                val directory = File(cacheDir, "share")
+                if (!directory.exists() && !directory.mkdirs()) {
+                    throw IllegalStateException("The PDF share folder could not be created.")
+                }
+                val elapsed = SystemClock.elapsedRealtime()
+                val lastCleanup = SHARE_CLEANUP_ELAPSED.get()
+                if ((lastCleanup < 0 || elapsed - lastCleanup >= 24L * 60 * 60 * 1000) &&
+                    SHARE_CLEANUP_ELAPSED.compareAndSet(lastCleanup, elapsed)
+                ) {
+                    try { SharedTempFiles.clean(directory, sharePrefix, System.currentTimeMillis()) }
+                    catch (_: Exception) { /* Cleanup is never required to share. */ }
+                }
+                val file = File.createTempFile(sharePrefix, ".pdf", directory)
+                FileOutputStream(file).use { it.write(bytes) }
+                // Resolve the existing printing FileProvider only after the file is closed.
+                FileProvider.getUriForFile(this, "$packageName.flutter.printing", file)
+            },
+            success = { uri -> openBillShare(uri, filename, result) },
+            failure = { result.error("share-unavailable", "The PDF could not be shared.", null) },
+        )
+    }
+
+    private fun openBillShare(uri: Uri, filename: String, result: MethodChannel.Result) {
         try {
-            // The printing plugin already registers a restricted cache/share
-            // FileProvider. Use its URI grant instead of exposing a file path.
-            val directory = File(cacheDir, "share")
-            if (!directory.exists() && !directory.mkdirs()) {
-                throw IllegalStateException("The PDF share folder could not be created.")
-            }
-            val file = File.createTempFile("bill-", ".pdf", directory)
-            FileOutputStream(file).use { it.write(bytes) }
-            val uri = FileProvider.getUriForFile(this, "$packageName.flutter.printing", file)
             fun intent() = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -403,6 +440,8 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        private val SHARE_CLEANUP_ELAPSED = AtomicLong(-1L)
+        private val SHARE_SESSION_PREFIX = "bill-${UUID.randomUUID()}-"
         private const val NOTIFICATION_CHANNEL = "hyner_business_alerts"
         private const val NOTIFICATION_PERMISSION_REQUEST = 4127
         private const val PROFILE_PHOTO_REQUEST = 4128

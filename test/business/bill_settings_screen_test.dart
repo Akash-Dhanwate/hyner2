@@ -247,6 +247,9 @@ void main() {
     'font presets and custom colours save independently and reject invalid input',
     (tester) async {
       await mount(tester);
+      await reveal(tester, find.text('Typography and colours'));
+      await tester.tap(find.text('Typography and colours'));
+      await tester.pumpAndSettle();
       final palette = find.byTooltip('Choose Business name colour');
       await reveal(tester, palette);
       await tester.tap(palette);
@@ -279,6 +282,28 @@ void main() {
     },
   );
 
+  testWidgets(
+    'branding preview keeps a stable image provider through unrelated form rebuilds',
+    (tester) async {
+      await mount(tester);
+      Finder logo() => find.byWidgetPredicate(
+        (widget) =>
+            widget is Image && widget.semanticLabel == 'Shop logo preview',
+      );
+      await reveal(tester, logo());
+      final original = tester.widget<Image>(logo()).image;
+      await reveal(tester, find.text('Typography and colours'));
+      await tester.tap(find.text('Typography and colours'));
+      await tester.pumpAndSettle();
+      await reveal(tester, field('Business name colour'));
+      await tester.enterText(field('Business name colour'), '#112233');
+      await tester.pumpAndSettle();
+      await reveal(tester, logo());
+      expect(identical(original, tester.widget<Image>(logo()).image), isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('loaded route fits 320dp with enlarged text and previews', (
     tester,
   ) async {
@@ -296,6 +321,9 @@ void main() {
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await reveal(tester, find.text('Typography and colours'));
+    await tester.tap(find.text('Typography and colours'));
+    await tester.pumpAndSettle();
     await reveal(tester, find.byType(DropdownButtonFormField<BillLayout>));
     expect(tester.takeException(), isNull);
     await tester.tap(find.byType(DropdownButtonFormField<BillLayout>));

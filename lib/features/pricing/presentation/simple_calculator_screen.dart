@@ -28,7 +28,15 @@ class _SimpleRow {
   final ProductSetup setup;
   final UniversalProduct? original;
   String get name => setup.data['name'] as String;
-  String get rate => setup.rows('rates').first['amount'] as String;
+  List<Map<String, dynamic>> get varieties => (setup.data.putIfAbsent(
+    'simpleVarieties',
+    () => <Map<String, dynamic>>[],
+  ) as List).cast<Map<String, dynamic>>();
+  String get rate =>
+      (varieties.isEmpty
+              ? setup.rows('rates').first['amount']
+              : varieties.first['amount'])
+          as String;
   String get unit =>
       original?.rule.rateLookup.rates
           .where((r) => r.key == 'base')
@@ -44,6 +52,7 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
   String? error;
   bool loading = true, saving = false, taxEnabled = false, loadFailed = false;
   String taxPercent = '', taxBehavior = 'exclusive';
+  bool _dirty = false, _allowExit = false, _askingToLeave = false;
   UniversalStoredDraft? existing;
   List<_SimpleRow> rows = [];
   String get storageKey => 'simple_setup_${widget.profileId ?? 'new'}';
@@ -80,6 +89,7 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
               .first['amount'] = Exact.parse(decimal) == base.single.amount
               ? decimal
               : '${base.single.amount}';
+          setup.data['simpleVarieties'] = simpleVarieties(product);
           rows.add(_SimpleRow(setup, original: product));
         }
       } else {
@@ -122,7 +132,10 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
   }
 
   void _changed() {
-    setState(() => error = null);
+    setState(() {
+      error = null;
+      _dirty = true;
+    });
     if (widget.profileId != null) return;
     unawaited(
       writer
@@ -169,9 +182,15 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
           row.setup.data['taxBehavior'] = taxEnabled ? taxBehavior : 'exempt';
           row.setup.data['taxPercent'] = taxPercent;
         }
+        configureSimpleVarieties(row.setup, row.varieties);
         final product = row.original == null
             ? row.setup.compile(widget.workspace.businessId, money)
-            : replaceSimpleRate(row.original!, row.name, row.rate);
+            : replaceSimpleVarieties(
+                row.original!,
+                row.name,
+                row.rate,
+                row.varieties,
+              );
         products.add(product);
         if (!categories.any((c) => c.id == product.categoryId)) {
           categories.add(
@@ -220,6 +239,8 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
             rate['amount'] = row.rate.trim();
           }
         }
+        setup.data['simpleVarieties'] = row.varieties;
+        configureSimpleVarieties(setup, row.varieties);
         await widget.workspace.values.write(key, setup.data);
       }
       await widget.workspace.repository.publish(
@@ -229,7 +250,14 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
       );
       // Clear an unfinished new form only after publication is durable.
       await widget.workspace.values.write(storageKey, null);
-      if (mounted) Navigator.pop(context, profileId);
+      if (mounted) {
+        setState(() {
+          _dirty = false;
+          _allowExit = true;
+        });
+        await WidgetsBinding.instance.endOfFrame;
+        if (mounted) Navigator.pop(context, profileId);
+      }
     } catch (e) {
       if (existing != null) {
         try {
@@ -249,9 +277,24 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !saving,
+    canPop: !saving && (widget.profileId == null || !_dirty || _allowExit),
+    onPopInvokedWithResult: (didPop, result) {
+      if (!didPop && !saving) unawaited(_confirmLeave());
+    },
     child: Scaffold(
       appBar: AppBar(
+        leading: Navigator.of(context).canPop()
+            ? BackButton(
+                onPressed: () {
+                  if (saving) return;
+                  if (widget.profileId != null && _dirty && !_allowExit) {
+                    unawaited(_confirmLeave());
+                  } else {
+                    Navigator.maybePop(context);
+                  }
+                },
+              )
+            : null,
         title: Text(
           widget.profileId == null ? 'Set up calculator' : 'Edit selling rates',
         ),
@@ -313,16 +356,43 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
                             },
                           ),
                           const SizedBox(height: 12),
-                          ValueField(
-                            key: ValueKey('simple-rate-${row.setup.id}'),
-                            label:
-                                'Selling rate ($currency / ${unitShort[row.unit] ?? row.unit})',
-                            numeric: true,
-                            value: row.rate,
-                            onChanged: (v) {
-                              row.setup.rows('rates').first['amount'] = v;
-                              _changed();
-                            },
+                          if (row.varieties.isEmpty)
+                            ValueField(
+                              key: ValueKey('simple-rate-${row.setup.id}'),
+                              label:
+                                  'Selling rate ($currency / ${unitShort[row.unit] ?? row.unit})',
+                              numeric: true,
+                              value: row.rate,
+                              onChanged: (v) {
+                                row.setup.rows('rates').first['amount'] = v;
+                                _changed();
+                              },
+                            ),
+                          ..._varietyFields(row),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              key: ValueKey('add-variety-${row.setup.id}'),
+                              onPressed: row.varieties.length >= 100
+                                  ? null
+                                  : () {
+                                      if (row.varieties.isEmpty) {
+                                        row.varieties.add({
+                                          'id': newPricingId(),
+                                          'name': 'Standard',
+                                          'amount': row.rate,
+                                        });
+                                      }
+                                      row.varieties.add({
+                                        'id': newPricingId(),
+                                        'name': '',
+                                        'amount': '',
+                                      });
+                                      _changed();
+                                    },
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add variety'),
+                            ),
                           ),
                           if (row.setup.kind == 'packaging' &&
                               row.original == null) ...[
@@ -453,4 +523,76 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
       ),
     ),
   );
+
+  Future<void> _confirmLeave() async {
+    if (_askingToLeave) return;
+    _askingToLeave = true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard rate changes?'),
+        content: const Text('Your saved selling rates will stay as they are.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Discard changes'),
+          ),
+        ],
+      ),
+    );
+    _askingToLeave = false;
+    if (mounted && discard == true) {
+      setState(() => _allowExit = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  List<Widget> _varietyFields(_SimpleRow row) => [
+    if (row.varieties.isNotEmpty) ...[
+      const Text('Varieties', style: TextStyle(fontWeight: FontWeight.bold)),
+      const Text(
+        'Each variety has its own rate. The first is selected by default.',
+      ),
+      for (final variety in row.varieties) ...[
+        const SizedBox(height: 16),
+        ValueField(
+          key: ValueKey('variety-name-${variety['id']}'),
+          label: 'Variety name',
+          value: variety['name'] as String,
+          onChanged: (v) {
+            variety['name'] = v;
+            _changed();
+          },
+        ),
+        const SizedBox(height: 12),
+        ValueField(
+          key: ValueKey('variety-rate-${variety['id']}'),
+          label:
+              'Selling rate ($currency / ${unitShort[row.unit] ?? row.unit})',
+          numeric: true,
+          value: variety['amount'] as String,
+          onChanged: (v) {
+            variety['amount'] = v;
+            _changed();
+          },
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () {
+              row.setup.rows('rates').first['amount'] = row.rate;
+              row.varieties.remove(variety);
+              _changed();
+            },
+            child: const Text('Remove variety'),
+          ),
+        ),
+      ],
+    ],
+  ];
 }

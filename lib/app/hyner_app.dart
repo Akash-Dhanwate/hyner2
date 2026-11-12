@@ -15,7 +15,12 @@ class HynerApp extends ConsumerWidget {
     darkTheme: HynerTheme.build(Brightness.dark),
     themeMode: ref.watch(themeControllerProvider),
     themeAnimationDuration:
-        (MediaQuery.maybeOf(context)?.disableAnimations ?? false)
+        (MediaQuery.maybeOf(context)?.disableAnimations ??
+            WidgetsBinding
+                .instance
+                .platformDispatcher
+                .accessibilityFeatures
+                .disableAnimations)
         ? Duration.zero
         : const Duration(milliseconds: 220),
     routerConfig: ref.watch(routerProvider),

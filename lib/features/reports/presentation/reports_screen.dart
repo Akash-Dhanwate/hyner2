@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../../inventory/domain/product.dart';
 import '../data/report_pdf_service.dart';
@@ -52,45 +53,59 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         const SizedBox(height: 8),
         const Text('View sales, purchases, balances, and product performance.'),
         const SizedBox(height: 20),
-        DropdownButtonFormField<String>(
-          initialValue: _currency,
-          decoration: const InputDecoration(labelText: 'Currency'),
-          items: [
-            for (final currency in inventoryCurrencies)
-              DropdownMenuItem(value: currency, child: Text(currency)),
-          ],
-          onChanged: (value) => setState(() => _currency = value ?? _currency),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<ReportPeriod>(
-          initialValue: _period,
-          decoration: const InputDecoration(labelText: 'Period'),
-          items: const [
-            DropdownMenuItem(value: ReportPeriod.today, child: Text('Today')),
-            DropdownMenuItem(
-              value: ReportPeriod.month,
-              child: Text('This month'),
-            ),
-            DropdownMenuItem(
-              value: ReportPeriod.last30Days,
-              child: Text('Last 30 days'),
-            ),
-            DropdownMenuItem(
-              value: ReportPeriod.allTime,
-              child: Text('All time'),
-            ),
-          ],
-          onChanged: (value) => setState(() => _period = value ?? _period),
+        ResponsivePair(
+          first: DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue: _currency,
+            decoration: const InputDecoration(labelText: 'Currency'),
+            items: [
+              for (final currency in inventoryCurrencies)
+                DropdownMenuItem(value: currency, child: Text(currency)),
+            ],
+            onChanged: (value) =>
+                setState(() => _currency = value ?? _currency),
+          ),
+          second: DropdownButtonFormField<ReportPeriod>(
+            isExpanded: true,
+            initialValue: _period,
+            decoration: const InputDecoration(labelText: 'Period'),
+            items: const [
+              DropdownMenuItem(value: ReportPeriod.today, child: Text('Today')),
+              DropdownMenuItem(
+                value: ReportPeriod.month,
+                child: Text('This month'),
+              ),
+              DropdownMenuItem(
+                value: ReportPeriod.last30Days,
+                child: Text('Last 30 days'),
+              ),
+              DropdownMenuItem(
+                value: ReportPeriod.allTime,
+                child: Text('All time'),
+              ),
+            ],
+            onChanged: (value) => setState(() => _period = value ?? _period),
+          ),
         ),
         const SizedBox(height: 24),
         report.when(
           loading: () => const LinearProgressIndicator(),
-          error: (_, _) => const InlineNotice(
-            'Reports could not be loaded from local records.',
-            isError: true,
+          error: (_, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const InlineNotice(
+                'Reports could not be loaded from local records.',
+                isError: true,
+              ),
+              TextButton(
+                onPressed: () => ref.invalidate(businessReportProvider(query)),
+                child: const Text('Retry reports'),
+              ),
+            ],
           ),
           data: (data) => _ReportContent(
             report: data,
+            monthly: _period == ReportPeriod.month,
             preparedFor: profile?.label ?? 'Business owner',
           ),
         ),
@@ -100,7 +115,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 }
 
 class _ReportContent extends StatelessWidget {
-  const _ReportContent({required this.report, required this.preparedFor});
+  const _ReportContent({
+    required this.report,
+    required this.preparedFor,
+    required this.monthly,
+  });
+  final bool monthly;
   final BusinessReport report;
   final String preparedFor;
 
@@ -130,6 +150,32 @@ class _ReportContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          report.hasIncompleteCosts
+              ? 'Known-cost earnings'
+              : 'Earnings after costs',
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          formatBigMoney(report.earningsAfterCostsMinor, report.currency),
+          key: const Key('report-earnings'),
+          style: theme.textTheme.headlineMedium,
+        ),
+        Text(
+          'After buying costs and recorded operating expenses',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (report.hasIncompleteCosts)
+          Text(
+            'Incomplete: ${report.uncostedSalesCount} bills have no saved buying costs.',
+            style: theme.textTheme.bodySmall,
+          ),
+        DetailHint(
+          'Gross profit is the selling amount less the buying cost saved on each bill. Earnings subtract recorded operating expenses as well. Stock purchases are not deducted twice. Bills without saved costs are excluded; this is an estimate, not your cash balance.',
+          title: 'Earnings calculation',
+        ),
+        const SizedBox(height: 12),
         const Eyebrow('Sales'),
         const SizedBox(height: 8),
         _Metric(
@@ -140,19 +186,52 @@ class _ReportContent extends StatelessWidget {
         _Metric(
           'Payment received',
           formatBigMoney(report.paidRevenueMinor, report.currency),
-          '${report.paidSalesCount} bills fully paid',
+          'Recorded payments on bills in this period',
         ),
         _Metric(
           'Balance due',
           formatBigMoney(report.unpaidRevenueMinor, report.currency),
           '${report.unpaidSalesCount} open bills',
         ),
+        const SizedBox(height: 18),
+        Text('Recent sales', style: theme.textTheme.titleMedium),
+        if (report.salesRecords.isEmpty) const Text('No bills in this period.'),
+        for (final record in report.salesRecords.take(3))
+          InkWell(
+            onTap: () => context.push<void>(
+              '/sales/${Uri.encodeComponent(record.reference)}',
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(record.customer, style: theme.textTheme.titleSmall),
+                  Text(
+                    '${record.reference} · ${record.date.toLocal().toString().substring(0, 10)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  Text(
+                    formatBigMoney(record.totalMinor, report.currency),
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        TextButton(
+          onPressed: () => context.push<void>('/sales/history'),
+          child: const Text('View all bills'),
+        ),
         const SizedBox(height: 12),
         ActivityBarChart(report: report),
         const SizedBox(height: 14),
         PaymentDonutChart(report: report),
         const SizedBox(height: 18),
-        Text('Monthly highlights', style: theme.textTheme.titleLarge),
+        Text(
+          monthly ? 'Monthly highlights' : 'Period highlights',
+          style: theme.textTheme.titleLarge,
+        ),
         const SizedBox(height: 8),
         Text.rich(
           TextSpan(
@@ -186,68 +265,81 @@ class _ReportContent extends StatelessWidget {
             key: const Key('download-report-pdf'),
             onPressed: () => _downloadPdf(context),
             icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Download monthly PDF'),
+            label: Text(
+              monthly ? 'Download monthly PDF' : 'Download report PDF',
+            ),
           ),
         ),
         const SizedBox(height: 22),
-        const Eyebrow('Profit and stock'),
-        const SizedBox(height: 8),
-        _Metric(
-          'Gross profit before expenses',
-          formatBigMoney(report.grossProfitMinor, report.currency),
-          'From bills with saved product costs',
+        DisclosureSection(
+          title: 'Profit and stock',
+          maintainState: false,
+          summary: 'Cost snapshots and current stock value',
+          children: [
+            const SizedBox(height: 8),
+            _Metric(
+              'Gross profit before expenses',
+              formatBigMoney(report.grossProfitMinor, report.currency),
+              'From bills with saved product costs',
+            ),
+            _Metric(
+              'Cost of goods sold',
+              formatBigMoney(report.costOfGoodsMinor, report.currency),
+              'From cost captured when each bill was saved',
+            ),
+            _Metric(
+              'Current inventory value',
+              formatBigMoney(report.inventoryValueMinor, report.currency),
+              'Current stock × weighted-average cost',
+            ),
+            if (report.uncostedSalesCount > 0) ...[
+              const SizedBox(height: 8),
+              InlineNotice(
+                '${report.uncostedSalesCount} older bills have no saved cost snapshot. Gross profit excludes those bills.',
+              ),
+            ],
+          ],
         ),
-        _Metric(
-          'Cost of goods sold',
-          formatBigMoney(report.costOfGoodsMinor, report.currency),
-          'From cost captured when each bill was saved',
-        ),
-        _Metric(
-          'Current inventory value',
-          formatBigMoney(report.inventoryValueMinor, report.currency),
-          'Current stock × weighted-average cost',
-        ),
-        if (report.uncostedSalesCount > 0) ...[
-          const SizedBox(height: 8),
-          InlineNotice(
-            '${report.uncostedSalesCount} older bills have no saved cost snapshot. Gross profit excludes those bills.',
-          ),
-        ],
-        const SizedBox(height: 22),
-        const Eyebrow('Purchases'),
-        const SizedBox(height: 8),
-        _Metric(
-          'Purchases recorded',
-          formatBigMoney(report.purchaseSpendMinor, report.currency),
-          '${report.purchaseCount} purchase records',
-        ),
-        _Metric(
-          'Returns to suppliers',
-          formatBigMoney(report.returnValueMinor, report.currency),
-          'Returns recorded in this period',
-        ),
-        _Metric(
-          'Net purchase spend',
-          formatBigMoney(report.netPurchasesMinor, report.currency),
-          'Purchase records less supplier returns',
-        ),
-        _Metric(
-          'Operating expenses',
-          formatBigMoney(report.operatingExpensesMinor, report.currency),
-          '${report.otherExpenseCount} manually entered expenses',
-        ),
-        _Metric(
-          'Total recorded expenses',
-          formatBigMoney(report.totalExpenseMinor, report.currency),
-          'Net purchases plus operating expenses',
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => context.push<void>('/expenses'),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Record an expense'),
-          ),
+        DisclosureSection(
+          title: 'Purchases and expenses',
+          maintainState: false,
+          summary: 'Supplier spending, returns and running costs',
+          children: [
+            const SizedBox(height: 8),
+            _Metric(
+              'Purchases recorded',
+              formatBigMoney(report.purchaseSpendMinor, report.currency),
+              '${report.purchaseCount} purchase records',
+            ),
+            _Metric(
+              'Returns to suppliers',
+              formatBigMoney(report.returnValueMinor, report.currency),
+              'Returns recorded in this period',
+            ),
+            _Metric(
+              'Net purchase spend',
+              formatBigMoney(report.netPurchasesMinor, report.currency),
+              'Purchase records less supplier returns',
+            ),
+            _Metric(
+              'Operating expenses',
+              formatBigMoney(report.operatingExpensesMinor, report.currency),
+              '${report.otherExpenseCount} manually entered expenses',
+            ),
+            _Metric(
+              'Total recorded expenses',
+              formatBigMoney(report.totalExpenseMinor, report.currency),
+              'Net purchases plus operating expenses',
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => context.push<void>('/expenses'),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Record an expense'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 22),
         const Eyebrow('Top five products by revenue'),
@@ -297,35 +389,6 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: theme.textTheme.titleSmall),
-                const SizedBox(height: 3),
-                Text(
-                  detail,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium,
-            textAlign: TextAlign.end,
-          ),
-        ],
-      ),
-    );
+    return RecordFact(label: label, value: value, detail: detail);
   }
 }
