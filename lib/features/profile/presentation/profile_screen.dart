@@ -1,4 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+
+import '../../../core/images/image_editor_screen.dart';
+import '../../../core/images/profile_photo_store.dart';
+import '../../../core/widgets/account_scope_guard.dart';
+import '../../settings/presentation/settings_image_helper.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,12 +23,14 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  static const _mediaChannel = MethodChannel('hyner/media');
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _contactEmail = TextEditingController();
   final _phone = TextEditingController();
   final _photoUrl = TextEditingController();
+  Uint8List? _pendingPhoto;
+  String? _pendingPhotoPath;
+  bool _picking = false;
   bool _editing = false;
   bool _saving = false;
   AppFailure? _failure;
@@ -37,6 +46,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _contactEmail.text = profile?.contactEmail ?? '';
     _phone.text = profile?.phone ?? '';
     _photoUrl.text = profile?.photoUrl ?? '';
+    _pendingPhoto = null;
+    _pendingPhotoPath = null;
   }
 
   @override
@@ -49,12 +60,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _save() async {
-    if (_saving || !_form.currentState!.validate()) return;
+    if (_saving || _picking || !_form.currentState!.validate()) return;
+    final uid = ref.read(sessionProvider).profile?.uid;
+    if (uid == null) return;
     setState(() {
       _saving = true;
       _failure = null;
     });
     try {
+      if (_pendingPhoto != null) {
+        _pendingPhotoPath ??= await storeProfilePhoto(uid, _pendingPhoto!);
+        if (!mounted || ref.read(sessionProvider).profile?.uid != uid) return;
+        _photoUrl.text = _pendingPhotoPath!;
+      }
       await ref
           .read(sessionProvider.notifier)
           .updateProfile(
@@ -65,11 +83,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               photoUrl: _photoUrl.text.trim().isEmpty ? null : _photoUrl.text,
             ),
           );
-      if (!mounted) return;
+      if (!mounted || ref.read(sessionProvider).profile?.uid != uid) return;
       setState(() {
+        _pendingPhoto = null;
+        _pendingPhotoPath = null;
         _saving = false;
         _editing = false;
       });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Profile updated.')));
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -79,22 +101,74 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _pickPhoto() async {
+  Future<void> _pickPhoto({bool edit = false}) async {
     final uid = ref.read(sessionProvider).profile?.uid;
-    if (uid == null || _saving) return;
+    if (uid == null || _saving || _picking) return;
+    setState(() {
+      _picking = true;
+      _failure = null;
+    });
+    bool current() => mounted && ref.read(sessionProvider).profile?.uid == uid;
     try {
-      final path = await _mediaChannel.invokeMethod<String>(
-        'pickProfilePhoto',
-        {'uid': uid},
-      );
-      if (path != null && mounted) setState(() => _photoUrl.text = path);
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message ?? 'Photo could not be selected.'),
+      Uint8List bytes;
+      if (edit && _pendingPhoto != null) {
+        bytes = _pendingPhoto!;
+      } else if (edit && _photoUrl.text.isNotEmpty) {
+        final url = _photoUrl.text;
+        if (url.startsWith('/')) {
+          bytes = await readProfilePhotoFile(url);
+        } else {
+          final data = await NetworkAssetBundle(Uri.parse(url)).load('');
+          bytes = data.buffer.asUint8List(
+            data.offsetInBytes,
+            data.lengthInBytes,
+          );
+        }
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+          withData: true,
+          allowMultiple: false,
+        );
+        if (!current() || result == null || result.files.isEmpty) return;
+        final file = result.files.single;
+        if (file.bytes == null || file.size > maxSettingsImageBytes) {
+          throw const FormatException('Choose a readable photo up to 8 MB.');
+        }
+        bytes = file.bytes!;
+      }
+      if (!mounted || !current()) return;
+      final edited = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => AccountScopeGuard(
+            uid: uid,
+            child: ImageEditorScreen(
+              bytes: bytes,
+              title: 'Edit profile photo',
+              profile: true,
+            ),
+          ),
         ),
       );
+      if (edited != null && current()) {
+        setState(() {
+          _pendingPhoto = edited;
+          _pendingPhotoPath = null;
+        });
+      }
+    } catch (_) {
+      if (mounted && current()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The photo could not be opened. Choose another image.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (current()) setState(() => _picking = false);
     }
   }
 
@@ -183,6 +257,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(sessionProvider.select((session) => session.profile?.uid), (
+      previous,
+      next,
+    ) {
+      if (previous != next) {
+        _loadFields(ref.read(sessionProvider).profile);
+        _editing = false;
+        _saving = false;
+        _picking = false;
+        _failure = null;
+      }
+    });
     final session = ref.watch(sessionProvider);
     final profile = session.profile;
     if (profile == null) return const SizedBox.shrink();
@@ -266,43 +352,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   decoration: const InputDecoration(labelText: 'Phone number'),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _photoUrl,
-                  enabled: !_saving,
-                  keyboardType: TextInputType.url,
-                  maxLength: 1000,
-                  decoration: const InputDecoration(
-                    labelText: 'Profile photo URL or selected image',
-                    helperText: 'Choose a photo from this device or use an HTTPS image address.',
+                if (_pendingPhoto != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Semantics(
+                        label: 'New profile photo preview',
+                        image: true,
+                        child: ClipOval(
+                          child: Image.memory(
+                            _pendingPhoto!,
+                            width: 96,
+                            height: 96,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  validator: (value) {
-                    final text = value?.trim() ?? '';
-                    if (text.isEmpty) return null;
-                    if (text.startsWith('/') &&
-                        text.contains('/profile-images/') &&
-                        !text.contains('/../')) {
-                      return null;
-                    }
-                    final uri = Uri.tryParse(text);
-                    return uri == null ||
-                            uri.scheme != 'https' ||
-                            uri.host.isEmpty
-                        ? 'Use a valid HTTPS image address.'
-                        : null;
-                  },
-                ),
-                OutlinedButton.icon(
-                  onPressed: _saving ? null : _pickPhoto,
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Choose profile photo'),
+                if (_picking) const LinearProgressIndicator(),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('choose-profile-photo'),
+                      onPressed: _saving || _picking ? null : _pickPhoto,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Choose profile photo'),
+                    ),
+                    if (_pendingPhoto != null || _photoUrl.text.isNotEmpty)
+                      OutlinedButton.icon(
+                        key: const Key('edit-profile-photo'),
+                        onPressed: _saving || _picking
+                            ? null
+                            : () => _pickPhoto(edit: true),
+                        icon: const Icon(Icons.crop_rotate),
+                        label: const Text('Crop or rotate photo'),
+                      ),
+                    if (_pendingPhoto != null || _photoUrl.text.isNotEmpty)
+                      TextButton(
+                        onPressed: _saving || _picking
+                            ? null
+                            : () => setState(() {
+                                _pendingPhoto = null;
+                                _pendingPhotoPath = null;
+                                _photoUrl.clear();
+                              }),
+                        child: const Text('Remove photo'),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: _saving ? null : _save,
+                  onPressed: _saving || _picking ? null : _save,
                   child: Text(_saving ? 'Saving…' : 'Save profile'),
                 ),
                 TextButton(
-                  onPressed: _saving
+                  onPressed: _saving || _picking
                       ? null
                       : () {
                           _loadFields(profile);

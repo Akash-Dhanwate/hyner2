@@ -114,8 +114,8 @@ void main() {
         );
         expect(_pages(bytes), 1);
         final text = _content(bytes);
-        final label = copy == BillCopy.original ? 'Original' : 'Duplicate';
-        expect(text, contains(label));
+        expect(text, isNot(contains('Original')));
+        expect(text, isNot(contains('Duplicate')));
         expect(
           text,
           isNot(contains(copy == BillCopy.original ? 'Duplicate' : 'Original')),
@@ -189,14 +189,14 @@ void main() {
   });
 
   test(
-    'default PDF is Original and missing branding has a usable title',
+    'default PDF omits copy badges and missing branding has a usable title',
     () async {
       final bytes = await BillPdfService.build(
         sale: sale,
         settings: const PaymentSettings(),
       );
       final text = _content(bytes);
-      expect(text, contains('Original'));
+      expect(text, isNot(contains('Original')));
       expect(text, isNot(contains('Duplicate')));
       expect(text, contains('Sales bill'));
       expect(text, isNot(contains('not configured')));

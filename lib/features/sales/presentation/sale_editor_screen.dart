@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../customers/domain/customer.dart';
 import '../../customers/presentation/customers_controller.dart';
@@ -575,6 +576,12 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                 title: const Text('Build a bill'),
                 actions: [
                   IconButton(
+                    key: const Key('sale-editor-bill-preferences'),
+                    tooltip: 'Bill preferences',
+                    onPressed: () => context.push<void>('/bill-settings'),
+                    icon: const Icon(Icons.tune_rounded),
+                  ),
+                  IconButton(
                     tooltip: 'Saved bills',
                     onPressed: () => context.push<void>('/sales/history'),
                     icon: const Icon(Icons.history_rounded),
@@ -584,10 +591,23 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
         body: PageContent(
           children: [
             if (_checkout == null) ...[
-              Text(
-                'Build a bill',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
+              if (widget.embedded)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Build a bill',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('sale-editor-bill-preferences'),
+                      tooltip: 'Bill preferences',
+                      onPressed: () => context.push<void>('/bill-settings'),
+                      icon: const Icon(Icons.tune_rounded),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 12),
               _addProductButton(enabled),
               if (!_hasLines) const RecentBills(),
@@ -818,12 +838,12 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    FinancialAmount(
                       preview == null
                           ? (!_hasLines ? '—' : 'Check prices and quantities')
                           : formatMoney(preview.totalMinor, preview.currency),
-                      key: const Key('sale-total'),
-                      style: Theme.of(context).textTheme.headlineMedium,
+                      textKey: const Key('sale-total'),
+                      prominent: true,
                     ),
                     const SizedBox(height: 20),
                     if (_checkout == null) ...customerFields,

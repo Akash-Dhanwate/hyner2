@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -347,12 +349,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                       '${product.quantity} units',
                                       style: theme.textTheme.labelLarge,
                                     ),
-                                    Text(
+                                    FinancialAmount(
                                       formatMoney(
                                         product.priceMinor,
                                         product.currency,
                                       ),
-                                      style: theme.textTheme.bodySmall,
+                                      compact: true,
                                     ),
                                     if (product.isLowStock)
                                       Text(

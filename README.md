@@ -1,18 +1,32 @@
 # Hyner — business workspace and universal QuickPrice
 
-Android build **0.7.0+10** combines the business features copied from
+Android build **0.8.4+16** combines the business features copied from
 `hyner1-full` with the current universal QuickPrice calculator. The original
 source folder remains untouched.
 
-The current release unifies the business and calculator UI, groups optional
-settings and item specifications, and keeps primary selling actions direct.
+The current release adds calculator rename and safe removal actions, plus bill and quotation readability refinements on top of
+four saved colour themes, clearer financial typography,
+consistent edit/document actions and responsive register amounts. It retains
+confirmed bill deletion with stock restoration,
+QuickPrice quotation PDFs, three selectable document styles, simpler bill headings,
+and crop/rotate tools for profile photos, business logos and signatures, and
+the sales and reports refinements from 0.7.1.
+The existing application logo remains unchanged. Sage Green is the default palette;
+Settings → Theme also offers Slate Blue, Warm Copper and Muted Violet. Light/dark/system
+appearance is a separate preference. No business schema or calculation rules changed.
+See [master documentation and UI implementation report](docs/APP_MASTER_DOCUMENTATION.md#22-ui-polish-update-082)
+and the [bill and quotation readability follow-up](docs/APP_MASTER_DOCUMENTATION.md#23-bill-and-quotation-readability-follow-up) and
+[calculator management follow-up](docs/APP_MASTER_DOCUMENTATION.md#24-calculator-management-follow-up).
+See [bill deletion release notes](docs/bill-deletion-0.8.1.md),
+[quotation/PDF release notes](docs/quotations-0.8.0.md) and
+[sales/report release notes](docs/sales-refinements-0.7.1.md).
 See the [UI/UX audit, implementation report and before/after captures](UX_REDESIGN_REPORT.md).
 
 ## Use the Android app
 
-Install the matching `hyner-0.7.0-ux-redesign-arm64-v8a.apk` (most current phones),
-`hyner-0.7.0-ux-redesign-armeabi-v7a.apk` (32-bit Android), or
-`hyner-0.7.0-ux-redesign-x86_64.apk` from `build/app/outputs/flutter-apk/`.
+Install the matching `hyner-0.8.4-calculator-actions-arm64-v8a.apk` (most current phones),
+`hyner-0.8.4-calculator-actions-armeabi-v7a.apk` (32-bit Android), or
+`hyner-0.8.4-calculator-actions-x86_64.apk` from `build/app/outputs/flutter-apk/`.
 The separately built universal APK is the compatibility fallback. Install over the
 existing Hyner application; do not uninstall or clear app data. The original
 universal APK remains preserved. See [Plan A measurement and rollback guidance](docs/performance/PLAN_A.md).
@@ -29,6 +43,18 @@ enter product names and selling rates, then **Save and use calculator**. Door
 measurements default to inches, taxes default off, and final money uses half-up
 rounding to paisa/cents. Extras, tax settings and advanced configuration are
 optional. Saved calculators reopen without repeating setup.
+
+To quote a customer, add the products to your QuickPrice estimate, then choose
+**Quotation PDF** (or **Quotation** in the calculator). Enter the customer's name,
+mobile and optional address. The saved quotation provides **Download PDF**,
+**Copy PDF** on Android, **WhatsApp PDF** and **Preview PDF**. Quotations keep the
+saved item prices and do not reserve stock or create sales. Open **Saved
+quotations** from QuickPrice's folder button; it is no longer in More.
+
+Choose **Bill appearance → PDF style** to preview and select Classic, Studio or
+Ledger for both bills and quotations. Uploading a shop logo, signature or profile
+photo opens crop/rotate controls before it is used. Profile photo paths are not
+shown in the form. Save the form to commit the edited image.
 
 Use **Add variety** under a product to save named types such as Flush and
 Laminated with separate rates. Existing calculators support this through
@@ -61,6 +87,14 @@ when entering bill contact details; address is optional. Saved bills expose
 Original goes to WhatsApp. A compact Duplicate is compressed and archived locally;
 Save duplicate PDF exports it as a normal PDF. Document actions operate on the
 saved bill and never deduct stock again.
+
+Open **Sales → Saved bills → select a bill → Delete bill** to remove an
+incorrect or cancelled sale after confirmation. This removes its recorded
+payments, reminder and local PDF archive, updates reports/customer bill history,
+and restores tracked inventory once (reactivating archived products if needed).
+Delete only when the goods remain in, or have returned to, your stock. Deletion
+does not refund money or remove PDFs already exported/shared. Customer profiles,
+stock history and a deletion audit remain. This action cannot be undone.
 
 Checkout automatically saves and links a new customer by name and mobile.
 Customers can be searched by name, mobile, readable customer ID or added date.

@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
@@ -8,13 +10,12 @@ import '../../../core/widgets/page_content.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 
-final quotationsProvider =
-    FutureProvider.autoDispose<List<Map<String, Object?>>>((ref) async {
-      final uid = ref.watch(inventoryUidProvider);
-      if (uid == null) return const [];
-      final db = await ref.read(businessDatabaseProvider).databaseFor(uid);
-      return db.query('quotations', orderBy: 'createdAt DESC, id DESC');
-    });
+import 'package:go_router/go_router.dart';
+
+import 'quotation_controller.dart';
+import '../domain/quotation.dart';
+
+export 'quotation_controller.dart' show quotationsProvider;
 
 /// Currency values use two decimal places. Tax rounds half up to a minor unit.
 int quotationTaxMinor(int subtotalMinor, int rateBasisPoints) =>
@@ -33,6 +34,41 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
   bool _saving = false;
   int _generation = 0;
   String? _saveError;
+  final _older = <Map<String, Object?>>[];
+  bool _loadingMore = false, _end = false;
+  Future<void> _more(List<Map<String, Object?>> rows) async {
+    final uid = ref.read(inventoryUidProvider);
+    if (uid == null || rows.isEmpty || _loadingMore) return;
+    final generation = _generation;
+    setState(() {
+      _loadingMore = true;
+      _saveError = null;
+    });
+    try {
+      final last = rows.last;
+      final page = await ref
+          .read(quotationRepositoryProvider)
+          .list(
+            uid,
+            beforeTime: last['createdAt']! as String,
+            beforeId: last['id']! as String,
+          );
+      if (_current(uid, generation)) {
+        setState(() {
+          _older.addAll(page);
+          _end = page.length < 30;
+        });
+      }
+    } catch (_) {
+      if (_current(uid, generation)) {
+        setState(
+          () => _saveError = 'More quotations could not be loaded. Try again.',
+        );
+      }
+    } finally {
+      if (_current(uid, generation)) setState(() => _loadingMore = false);
+    }
+  }
 
   bool _current(String uid, int generation) =>
       mounted &&
@@ -91,6 +127,9 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
       if (previous == next) return;
       setState(() {
         _generation++;
+        _older.clear();
+        _loadingMore = false;
+        _end = false;
         _saving = false;
         _saveError = null;
       });
@@ -130,22 +169,65 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
               ),
             ],
           ),
-          data: (rows) {
+          data: (first) {
+            final rows = {
+              for (final row in [...first, ..._older]) row['id']: row,
+            }.values.toList();
             if (rows.isEmpty) return const Text('No quotations yet.');
             return Column(
               children: [
                 for (final row in rows)
                   ListTile(
+                    onTap: () {
+                      try {
+                        if (row['hasSnapshot'] == 1 ||
+                            Quotation.fromRow(row) != null) {
+                          context.push(
+                            '/quotations/${Uri.encodeComponent(row['id']! as String)}',
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'This manual quotation has no saved item PDF. Its details are shown in the list.',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (_) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'This quotation could not be read safely.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
                     contentPadding: EdgeInsets.zero,
                     title: Text(row['customerName']! as String),
-                    subtitle: Text(
-                      '${row['status']} · ${row['description']} · Tax ${formatMoney(row['taxMinor']! as int, row['currency']! as String)}',
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${row['status']} · ${_description(row)} · Tax ${formatMoney(row['taxMinor']! as int, row['currency']! as String)}',
+                        ),
+                        const SizedBox(height: 6),
+                        FinancialAmount(
+                          formatMoney(
+                            row['totalMinor']! as int,
+                            row['currency']! as String,
+                          ),
+                          compact: true,
+                        ),
+                      ],
                     ),
-                    trailing: Text(
-                      formatMoney(
-                        row['totalMinor']! as int,
-                        row['currency']! as String,
-                      ),
+                  ),
+                if (!_end && first.length >= 30)
+                  TextButton(
+                    onPressed: _loadingMore ? null : () => _more(rows),
+                    child: Text(
+                      _loadingMore ? 'Loading…' : 'Load more quotations',
                     ),
                   ),
               ],
@@ -278,4 +360,15 @@ class _QuoteDialogState extends State<_QuoteDialog> {
       ),
     ],
   );
+}
+
+String _description(Map<String, Object?> row) {
+  if (row['hasSnapshot'] == 1) return 'Items from QuickPrice';
+  try {
+    final quote = Quotation.fromRow(row);
+    if (quote != null) return '${quote.draft.lines.length} items';
+  } catch (_) {
+    return 'Saved quotation could not be read';
+  }
+  return row['description']! as String;
 }

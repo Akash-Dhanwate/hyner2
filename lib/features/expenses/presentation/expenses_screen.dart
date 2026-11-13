@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -177,31 +179,37 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(expense.description),
-                        subtitle: Text(
-                          '${expense.category} · ${_formatExpenseDate(expense.occurredAt)}',
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
+                              '${expense.category} · ${_formatExpenseDate(expense.occurredAt)}',
+                            ),
+                            const SizedBox(height: 6),
+                            FinancialAmount(
                               formatMoney(
                                 expense.amountMinor,
                                 expense.currency,
                               ),
+                              compact: true,
                             ),
-                            PopupMenuButton<String>(
-                              enabled: !_busy && uid != null,
-                              onSelected: (action) {
-                                if (action == 'delete') {
-                                  _delete(expense);
-                                }
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Delete'),
-                                ),
-                              ],
+                          ],
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Expense actions',
+                          enabled: !_busy && uid != null,
+                          onSelected: (action) {
+                            if (action == 'delete') {
+                              _delete(expense);
+                            }
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: ListTile(
+                                leading: Icon(Icons.delete_outline),
+                                title: Text('Delete'),
+                              ),
                             ),
                           ],
                         ),

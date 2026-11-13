@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hyner/app/bootstrap/app_dependencies.dart';
 import 'package:hyner/app/config/app_config.dart';
 import 'package:hyner/app/theme/appearance_repository.dart';
+import 'package:hyner/app/theme/theme_preset.dart';
 import 'package:hyner/core/errors/app_failure.dart';
 import 'package:hyner/features/auth/domain/auth_repository.dart';
 import 'package:hyner/features/customers/domain/customer.dart';
@@ -131,6 +132,7 @@ class FakeProfiles implements ProfileRepository {
 
 class MemoryAppearance implements AppearanceRepository {
   ThemeMode mode = ThemeMode.system;
+  ThemePreset preset = ThemePreset.sageGreen;
   bool failWrites = false;
   @override
   Future<ThemeMode> read() async => mode;
@@ -138,6 +140,14 @@ class MemoryAppearance implements AppearanceRepository {
   Future<void> write(ThemeMode value) async {
     if (failWrites) throw StateError('Simulated storage failure');
     mode = value;
+  }
+
+  @override
+  Future<ThemePreset> readPreset() async => preset;
+  @override
+  Future<void> writePreset(ThemePreset value) async {
+    if (failWrites) throw StateError('Simulated storage failure');
+    preset = value;
   }
 }
 

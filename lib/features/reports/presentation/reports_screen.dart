@@ -1,3 +1,6 @@
+import '../../../core/widgets/financial_amount.dart';
+import '../../../core/widgets/document_action_button.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -114,7 +117,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 }
 
-class _ReportContent extends StatelessWidget {
+class _ReportContent extends StatefulWidget {
   const _ReportContent({
     required this.report,
     required this.preparedFor,
@@ -124,14 +127,27 @@ class _ReportContent extends StatelessWidget {
   final BusinessReport report;
   final String preparedFor;
 
+  @override
+  State<_ReportContent> createState() => _ReportContentState();
+}
+
+class _ReportContentState extends State<_ReportContent> {
+  bool _exporting = false;
+  BusinessReport get report => widget.report;
+  bool get monthly => widget.monthly;
+
   Future<void> _downloadPdf(BuildContext context) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
     final now = DateTime.now();
+    final capturedReport = report;
+    final preparedFor = widget.preparedFor;
     try {
       await Printing.layoutPdf(
         name:
             'hyner-activity-${now.year}-${now.month.toString().padLeft(2, '0')}.pdf',
         onLayout: (_) => ReportPdfService.build(
-          report,
+          capturedReport,
           preparedFor: preparedFor,
           generatedAt: now,
         ),
@@ -141,6 +157,8 @@ class _ReportContent extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('The PDF report could not be created.')),
       );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -157,10 +175,11 @@ class _ReportContent extends StatelessWidget {
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 6),
-        Text(
+        FinancialAmount(
           formatBigMoney(report.earningsAfterCostsMinor, report.currency),
-          key: const Key('report-earnings'),
+          textKey: const Key('report-earnings'),
           style: theme.textTheme.headlineMedium,
+          prominent: true,
         ),
         Text(
           'After buying costs and recorded operating expenses',
@@ -193,6 +212,10 @@ class _ReportContent extends StatelessWidget {
           formatBigMoney(report.unpaidRevenueMinor, report.currency),
           '${report.unpaidSalesCount} open bills',
         ),
+        const SizedBox(height: 12),
+        ActivityBarChart(report: report),
+        const SizedBox(height: 14),
+        PaymentDonutChart(report: report),
         const SizedBox(height: 18),
         Text('Recent sales', style: theme.textTheme.titleMedium),
         if (report.salesRecords.isEmpty) const Text('No bills in this period.'),
@@ -211,22 +234,18 @@ class _ReportContent extends StatelessWidget {
                     '${record.reference} · ${record.date.toLocal().toString().substring(0, 10)}',
                     style: theme.textTheme.bodySmall,
                   ),
-                  Text(
+                  FinancialAmount(
                     formatBigMoney(record.totalMinor, report.currency),
-                    style: theme.textTheme.titleMedium,
+                    compact: true,
                   ),
                 ],
               ),
             ),
           ),
         TextButton(
-          onPressed: () => context.push<void>('/sales/history'),
+          onPressed: () => context.push<void>('/sales/history', extra: ''),
           child: const Text('View all bills'),
         ),
-        const SizedBox(height: 12),
-        ActivityBarChart(report: report),
-        const SizedBox(height: 14),
-        PaymentDonutChart(report: report),
         const SizedBox(height: 18),
         Text(
           monthly ? 'Monthly highlights' : 'Period highlights',
@@ -261,15 +280,21 @@ class _ReportContent extends StatelessWidget {
         const SizedBox(height: 18),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
+          child: DocumentActionButton(
             key: const Key('download-report-pdf'),
-            onPressed: () => _downloadPdf(context),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: Text(
-              monthly ? 'Download monthly PDF' : 'Download report PDF',
-            ),
+            primary: true,
+            onPressed: _exporting ? null : () => _downloadPdf(context),
+            icon: Icons.download_outlined,
+            label: _exporting ? 'Preparing PDF…' : 'Save or print PDF',
           ),
         ),
+        const SizedBox(height: 6),
+        Text(
+          'PDF · Opens the print and save dialog.',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (_exporting)
+          const LinearProgressIndicator(semanticsLabel: 'Preparing report PDF'),
         const SizedBox(height: 22),
         DisclosureSection(
           title: 'Profit and stock',
@@ -295,7 +320,7 @@ class _ReportContent extends StatelessWidget {
             if (report.uncostedSalesCount > 0) ...[
               const SizedBox(height: 8),
               InlineNotice(
-                '${report.uncostedSalesCount} older bills have no saved cost snapshot. Gross profit excludes those bills.',
+                '${report.uncostedSalesCount} bills have no saved cost snapshot. Gross profit excludes those bills.',
               ),
             ],
           ],
@@ -365,9 +390,9 @@ class _ReportContent extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  FinancialAmount(
                     formatBigMoney(product.revenueMinor, report.currency),
-                    style: theme.textTheme.bodySmall,
+                    compact: true,
                   ),
                   const SizedBox(height: 6),
                 ],

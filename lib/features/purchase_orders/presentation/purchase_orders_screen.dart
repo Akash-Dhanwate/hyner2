@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
@@ -128,12 +130,19 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(row['supplierName']! as String),
-                    subtitle: Text('${row['status']} · ${row['description']}'),
-                    trailing: Text(
-                      formatMoney(
-                        row['totalMinor']! as int,
-                        row['currency']! as String,
-                      ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${row['status']} · ${row['description']}'),
+                        const SizedBox(height: 6),
+                        FinancialAmount(
+                          formatMoney(
+                            row['totalMinor']! as int,
+                            row['currency']! as String,
+                          ),
+                          compact: true,
+                        ),
+                      ],
                     ),
                   ),
               ],

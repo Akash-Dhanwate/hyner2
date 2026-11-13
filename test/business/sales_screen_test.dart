@@ -126,7 +126,139 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Sales opens the bill builder without querying saved history', (
+  Future<void> openDeletableBill(WidgetTester tester) async {
+    await sales.create(
+      testIdentity.uid,
+      'delete-me',
+      SaleDraft(
+        currency: 'INR',
+        customerName: 'Buyer to correct',
+        customerPhone: '9876543210',
+        lines: [
+          SaleLine.fromProduct(
+            inventory.products(testIdentity.uid)['TEST-1']!,
+            2,
+          ),
+        ],
+      ),
+    );
+    container.read(routerProvider).go('/sales/delete-me');
+    await tester.pumpAndSettle();
+    await tap(tester, find.byKey(const Key('delete-bill')));
+  }
+
+  testWidgets(
+    'bill deletion can be cancelled and confirmed; stock and history update',
+    (tester) async {
+      await mount(tester);
+      await openDeletableBill(tester);
+      expect(find.text('Delete this bill?'), findsOneWidget);
+      expect(
+        find.textContaining('Inventory quantities will be restored'),
+        findsOneWidget,
+      );
+      await tap(tester, find.text('Cancel'));
+      expect(sales.sales(testIdentity.uid).containsKey('delete-me'), true);
+      expect(inventory.products(testIdentity.uid)['TEST-1']!.quantity, 3);
+      await tap(tester, find.byKey(const Key('delete-bill')));
+      await tap(tester, find.byKey(const Key('confirm-delete-bill')));
+      expect(sales.sales(testIdentity.uid), isEmpty);
+      expect(inventory.products(testIdentity.uid)['TEST-1']!.quantity, 5);
+      expect(
+        container.read(routerProvider).routeInformationProvider.value.uri.path,
+        '/sales/history',
+      );
+      expect(find.text('Delete this bill?'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('failed deletion keeps the bill and allows retry', (
+    tester,
+  ) async {
+    await mount(tester);
+    await openDeletableBill(tester);
+    sales.failure = const AppFailure(
+      FailureKind.unknown,
+      'Storage unavailable',
+    );
+    await tap(tester, find.byKey(const Key('confirm-delete-bill')));
+    expect(find.textContaining('Storage unavailable'), findsOneWidget);
+    expect(sales.sales(testIdentity.uid).containsKey('delete-me'), true);
+    expect(inventory.products(testIdentity.uid)['TEST-1']!.quantity, 3);
+    sales.failure = null;
+    await tap(tester, find.byKey(const Key('confirm-delete-bill')));
+    expect(sales.sales(testIdentity.uid), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'delete confirmation is scrollable at 320dp and large text; shows recorded payment amount',
+    (tester) async {
+      await mount(
+        tester,
+        size: const Size(320, 740),
+        scale: 1.8,
+        mode: ThemeMode.dark,
+      );
+      await openDeletableBill(tester);
+      await tap(tester, find.text('Cancel'));
+      await sales.recordPayment(testIdentity.uid, 'delete-me', 1000);
+      container.invalidate(saleProvider('delete-me'));
+      await tester.pumpAndSettle();
+      await tap(tester, find.byKey(const Key('delete-bill')));
+      expect(
+        find.textContaining('Recorded payments of INR 10.00'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tap(tester, find.text('Cancel'));
+      expect(sales.sales(testIdentity.uid).containsKey('delete-me'), true);
+    },
+  );
+
+  testWidgets('deletion blocks duplicate taps and back while saving', (
+    tester,
+  ) async {
+    await mount(tester);
+    await openDeletableBill(tester);
+    sales.pendingWrite = Completer<void>();
+    await tester.tap(find.byKey(const Key('confirm-delete-bill')));
+    await tester.pump();
+    final confirm = tester.widget<FilledButton>(
+      find.byKey(const Key('confirm-delete-bill')),
+    );
+    expect(confirm.onPressed, isNull);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('Delete this bill?'), findsOneWidget);
+    sales.pendingWrite!.complete();
+    await tester.pumpAndSettle();
+    expect(sales.deletedIds.length, 1);
+    expect(inventory.products(testIdentity.uid)['TEST-1']!.quantity, 5);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('switching accounts dismisses bill deletion without deleting', (
+    tester,
+  ) async {
+    await mount(tester);
+    await openDeletableBill(tester);
+    auth.changeAccount(
+      const AccountIdentity(
+        uid: 'test-bob',
+        email: 'bob@example.test',
+        displayName: 'Bob',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Delete this bill?'), findsNothing);
+    expect(find.byKey(const Key('confirm-delete-bill')), findsNothing);
+    expect(sales.sales(testIdentity.uid).containsKey('delete-me'), true);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Sales opens with products first and recent bills', (
     tester,
   ) async {
     await mount(tester);
@@ -134,8 +266,35 @@ void main() {
     container.read(routerProvider).go('/sales');
     await tester.pumpAndSettle();
     expect(find.text('Build a bill'), findsOneWidget);
-    expect(find.text('No products added yet.'), findsOneWidget);
-    expect(sales.requestedUids, isEmpty);
+    expect(
+      find.byKey(const Key('sale-editor-bill-preferences')),
+      findsOneWidget,
+    );
+    expect(find.text('Recent bills'), findsOneWidget);
+    expect(sales.requestedUids, everyElement(testIdentity.uid));
+    expect(find.byKey(const Key('sale-customer-name')), findsNothing);
+    expect(find.byKey(const Key('save-sale')), findsNothing);
+    expect(sales.writes, 0);
+  });
+
+  testWidgets('saved sales history links to bill preferences', (tester) async {
+    await mount(tester);
+    await tester.tap(find.byKey(const Key('sales-bill-preferences')));
+    await tester.pumpAndSettle();
+    expect(container.read(routerProvider).state.uri.path, '/bill-settings');
+    expect(find.text('Bill preferences'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bill builder links to bill preferences', (tester) async {
+    await mount(tester);
+    container.read(routerProvider).go('/sales');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sale-editor-bill-preferences')));
+    await tester.pumpAndSettle();
+    expect(container.read(routerProvider).state.uri.path, '/bill-settings');
+    expect(find.text('Bill preferences'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -144,19 +303,15 @@ void main() {
       await mount(tester);
       container.read(routerProvider).go('/sales');
       await tester.pumpAndSettle();
+      expect(find.text('Advance'), findsNothing);
+      expect(find.byKey(const Key('save-sale')), findsNothing);
+      await tap(tester, find.byKey(const Key('add-sale-product')));
+      await tap(tester, find.byKey(const Key('pick-TEST-1')));
       await tap(tester, find.text('Advance'));
       expect(find.byKey(const Key('sale-advance-amount')), findsOneWidget);
       expect(tester.takeException(), isNull);
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('save-sale')))
-            .onPressed,
-        isNull,
-      );
-      await tap(tester, find.byKey(const Key('add-sale-product')));
-      await tap(tester, find.byKey(const Key('pick-TEST-1')));
       await tap(tester, find.byTooltip('Remove TEST-1'));
-      expect(find.text('No products added yet.'), findsOneWidget);
+      expect(find.text('Recent bills'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -461,7 +616,7 @@ void main() {
       expect(find.widgetWithText(TextField, 'Width'), findsNothing);
       await tap(tester, find.text('Cancel'));
       expect(find.byKey(const Key('sale-price-TEST-1')), findsNothing);
-      expect(find.text('No products added yet.'), findsOneWidget);
+      expect(find.text('Recent bills'), findsOneWidget);
       expect(sales.writes, 0);
       expect(tester.takeException(), isNull);
     },
@@ -605,6 +760,14 @@ void main() {
       await tap(tester, find.byKey(const Key('add-sale-product')));
       await tap(tester, find.byKey(Key('pick-TEST-$i')));
     }
+    final scroll = find
+        .descendant(
+          of: find.byType(CustomScrollView).last,
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    tester.state<ScrollableState>(scroll).position.jumpTo(0);
+    await tester.pumpAndSettle();
     expect(find.text('Add product (6 added)'), findsOneWidget);
     expect(
       tester
@@ -698,10 +861,7 @@ void main() {
   ) async {
     await mount(tester);
     await tap(tester, find.byKey(const Key('new-sale')));
-    expect(
-      tester.widget<FilledButton>(find.byKey(const Key('save-sale'))).onPressed,
-      isNull,
-    );
+    expect(find.byKey(const Key('save-sale')), findsNothing);
     await tap(tester, find.byKey(const Key('add-sale-product')));
     await tap(tester, find.byKey(const Key('pick-TEST-1')));
     expect(await tester.binding.handlePopRoute(), isTrue);
@@ -759,7 +919,7 @@ void main() {
     container.read(routerProvider).go('/sales/new');
     await tester.pumpAndSettle();
     expect(find.text('Test product'), findsNothing);
-    expect(find.text('No products added yet.'), findsOneWidget);
+    expect(find.text('Recent bills'), findsOneWidget);
     expect(sales.writes, 0);
   });
   testWidgets(

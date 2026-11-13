@@ -312,7 +312,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Monthly highlights'), findsNothing);
     expect(find.text('Period highlights'), findsOneWidget);
-    expect(find.text('Download report PDF'), findsOneWidget);
+    expect(find.text('Save or print PDF'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

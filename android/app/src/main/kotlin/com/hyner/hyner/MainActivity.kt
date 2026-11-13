@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.ClipboardManager
+import android.os.PersistableBundle
 import android.content.ClipData
 import android.net.Uri
 import android.content.pm.PackageManager
@@ -53,7 +55,7 @@ class MainActivity : FlutterActivity() {
         createNotificationChannel()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hyner/bill_pdf")
             .setMethodCallHandler { call, result ->
-                if (call.method != "shareWhatsApp" && call.method != "savePdf") {
+                if (call.method !in listOf("shareWhatsApp", "savePdf", "copyPdf")) {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -64,11 +66,17 @@ class MainActivity : FlutterActivity() {
                     !filename.endsWith(".pdf") || filename.length > 160 ||
                     !bytes.copyOfRange(0, 5).contentEquals("%PDF-".toByteArray())
                 ) {
-                    result.error("invalid-pdf", "A valid bill PDF is required.", null)
+                    result.error("invalid-pdf", "A valid PDF is required.", null)
                     return@setMethodCallHandler
                 }
-                if (call.method == "shareWhatsApp") {
-                    shareBillPdf(bytes, filename, result)
+                if (call.method == "shareWhatsApp" || call.method == "copyPdf") {
+                    val enteredPhone = call.argument<String>("phone")?.filter { it.isDigit() }.orEmpty()
+                    val phone = if (enteredPhone.length == 10) "91$enteredPhone" else enteredPhone
+                    if (phone.isNotEmpty() && phone.length !in 8..15) {
+                        result.error("invalid-phone", "Enter a valid customer mobile number.", null)
+                        return@setMethodCallHandler
+                    }
+                    shareBillPdf(bytes, filename, result, call.method == "copyPdf", phone)
                 } else {
                     if (billPdfResult != null) {
                         result.error("save-open", "A PDF save dialog is already open.", null)
@@ -233,7 +241,7 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    private fun shareBillPdf(bytes: ByteArray, filename: String, result: MethodChannel.Result) {
+    private fun shareBillPdf(bytes: ByteArray, filename: String, result: MethodChannel.Result, copy: Boolean, phone: String) {
         fileWork.submit(
             action = {
                 val directory = File(cacheDir, "share")
@@ -253,12 +261,25 @@ class MainActivity : FlutterActivity() {
                 // Resolve the existing printing FileProvider only after the file is closed.
                 FileProvider.getUriForFile(this, "$packageName.flutter.printing", file)
             },
-            success = { uri -> openBillShare(uri, filename, result) },
+            success = { uri ->
+                if (copy) {
+                    try {
+                        val clip = ClipData.newUri(contentResolver, filename, uri)
+                        clip.description.extras = PersistableBundle().apply {
+                            putBoolean("android.content.extra.IS_SENSITIVE", true)
+                        }
+                        getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+                        result.success(null)
+                    } catch (_: Exception) {
+                        result.error("copy-unavailable", "This device could not copy the PDF. Use Download or Share instead.", null)
+                    }
+                } else openBillShare(uri, filename, phone, result)
+            },
             failure = { result.error("share-unavailable", "The PDF could not be shared.", null) },
         )
     }
 
-    private fun openBillShare(uri: Uri, filename: String, result: MethodChannel.Result) {
+    private fun openBillShare(uri: Uri, filename: String, phone: String, result: MethodChannel.Result) {
         try {
             fun intent() = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
@@ -269,14 +290,17 @@ class MainActivity : FlutterActivity() {
             }
             for (target in listOf("com.whatsapp", "com.whatsapp.w4b")) {
                 try {
-                    startActivity(intent().setPackage(target))
+                    val targeted = intent().setPackage(target)
+                    // Best-effort recipient hint; WhatsApp owns its confirmation UI.
+                    if (phone.isNotEmpty()) targeted.putExtra("jid", "$phone@s.whatsapp.net")
+                    startActivity(targeted)
                     result.success(null)
                     return
                 } catch (_: ActivityNotFoundException) {
                     // Try WhatsApp Business, then the system share sheet.
                 }
             }
-            startActivity(Intent.createChooser(intent(), "Share bill PDF"))
+            startActivity(Intent.createChooser(intent(), "Share PDF"))
             result.success(null)
         } catch (_: Exception) {
             result.error("share-unavailable", "The PDF could not be shared.", null)

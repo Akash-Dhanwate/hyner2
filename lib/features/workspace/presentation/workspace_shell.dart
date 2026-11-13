@@ -197,7 +197,6 @@ class _NavigationList extends StatelessWidget {
             '/quickprice',
             '/sales',
             '/customers',
-            '/quotations',
             '/whatsapp',
           ],
           'Stock & suppliers': ['/inventory', '/purchases', '/purchase-orders'],

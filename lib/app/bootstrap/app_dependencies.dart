@@ -13,6 +13,7 @@ import '../../features/sales/domain/bill_document_repository.dart';
 import '../../features/settings/domain/payment_settings.dart';
 import '../config/app_config.dart';
 import '../theme/appearance_repository.dart';
+import '../theme/theme_preset.dart';
 
 class AppDependencies {
   const AppDependencies({
@@ -28,6 +29,7 @@ class AppDependencies {
     required this.config,
     this.expenses = const UnconfiguredExpenseRepository(),
     this.initialTheme = ThemeMode.system,
+    this.initialPreset = ThemePreset.sageGreen,
     this.startupNotice,
     this.billDocuments,
   });
@@ -44,6 +46,7 @@ class AppDependencies {
   final ExpenseRepository expenses;
   final AppConfig config;
   final ThemeMode initialTheme;
+  final ThemePreset initialPreset;
   final String? startupNotice;
   final BillDocumentRepository? billDocuments;
 }
@@ -65,5 +68,27 @@ class ThemeController extends Notifier<ThemeMode> {
   Future<void> select(ThemeMode mode) async {
     await ref.read(dependenciesProvider).appearance.write(mode);
     state = mode;
+  }
+}
+
+final themePresetProvider =
+    NotifierProvider<ThemePresetController, ThemePreset>(
+      ThemePresetController.new,
+    );
+
+class ThemePresetController extends Notifier<ThemePreset> {
+  Future<void> _tail = Future.value();
+  @override
+  ThemePreset build() => ref.read(dependenciesProvider).initialPreset;
+
+  /// Serialize preference writes so fast selections persist in their chosen order.
+  Future<void> select(ThemePreset preset) {
+    final repository = ref.read(dependenciesProvider).appearance;
+    final next = _tail.then((_) async {
+      await repository.writePreset(preset);
+      if (ref.mounted) state = preset;
+    });
+    _tail = next.catchError((Object _) {});
+    return next;
   }
 }

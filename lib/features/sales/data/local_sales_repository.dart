@@ -56,6 +56,17 @@ class LocalSalesRepository implements SalesRepository {
     );
   }
 
+  @override
+  Future<List<Sale>> recent(String uid) async {
+    _checkOwner(uid);
+    final db = await _store.databaseFor(uid);
+    return (await db.query(
+      'sales',
+      orderBy: 'createdAt DESC, id DESC',
+      limit: 3,
+    )).map(_saleFromRow).toList();
+  }
+
   Future<SalesPage> _search(String uid, String text, SalesCursor? after) async {
     _checkOwner(uid);
     if (text.length > 120) {
@@ -81,7 +92,7 @@ class LocalSalesRepository implements SalesRepository {
                 cursor.id,
               ],
         orderBy: 'createdAt DESC, id DESC',
-        limit: 64,
+        limit: 32,
       );
       for (final row in rows) {
         if (query.contactMatches(
@@ -102,7 +113,7 @@ class LocalSalesRepository implements SalesRepository {
           );
         }
       }
-      if (rows.length < 64) return SalesPage(matches, null);
+      if (rows.length < 32) return SalesPage(matches, null);
       cursor = SalesCursor(
         DateTime.parse(rows.last['createdAt']! as String),
         rows.last['id']! as String,
@@ -304,6 +315,20 @@ class LocalSalesRepository implements SalesRepository {
       limit: 1,
     );
     if (rows.isEmpty) {
+      final deleted = await db.query(
+        'settings',
+        columns: ['key'],
+        where: 'key = ?',
+        whereArgs: ['bill-deleted/$id'],
+        limit: 1,
+      );
+      if (deleted.isNotEmpty) {
+        throw const AppFailure(
+          FailureKind.invalidData,
+          'This bill was deleted. Start a new estimate or bill for another order.',
+          reference: 'sales/deleted',
+        );
+      }
       throw const AppFailure(
         FailureKind.invalidData,
         'This sale could not be found. Refresh sales.',
@@ -323,6 +348,18 @@ class LocalSalesRepository implements SalesRepository {
     final db = await _store.databaseFor(uid);
     final now = DateTime.now().toUtc();
     await db.transaction((tx) async {
+      final deleted = await tx.query(
+        'settings',
+        columns: ['key'],
+        where: 'key = ?',
+        whereArgs: ['bill-deleted/$id'],
+        limit: 1,
+      );
+      if (deleted.isNotEmpty) {
+        throw inventoryInvalid(
+          'This bill was deleted. Start a new estimate or bill for another order.',
+        );
+      }
       final existing = await tx.query(
         'sales',
         where: 'id = ?',
@@ -437,6 +474,105 @@ class LocalSalesRepository implements SalesRepository {
         'createdAt': now.toIso8601String(),
         'paidAt': null,
       });
+    });
+  }
+
+  @override
+  Future<void> delete(
+    String uid,
+    String id, {
+    required int expectedPaidMinor,
+  }) async {
+    _checkOwner(uid);
+    if (!InventoryCodec.validOperationId(id)) {
+      throw inventoryInvalid('Invalid bill reference.');
+    }
+    final db = await _store.databaseFor(uid);
+    await db.transaction((tx) async {
+      final rows = await tx.query('sales', where: 'id = ?', whereArgs: [id]);
+      if (rows.isEmpty) {
+        final deleted = await tx.query(
+          'settings',
+          columns: ['key'],
+          where: 'key = ?',
+          whereArgs: ['bill-deleted/$id'],
+          limit: 1,
+        );
+        if (deleted.isNotEmpty) return;
+        throw inventoryInvalid('This bill could not be found. Refresh sales.');
+      }
+      final prior = _saleFromRow(rows.single);
+      if (prior.paidMinor != expectedPaidMinor) {
+        throw inventoryInvalid(
+          'Payments on this bill changed. Reopen the bill before deleting it.',
+        );
+      }
+      final now = _clock().toUtc().toIso8601String();
+      for (var index = 0; index < prior.draft.lines.length; index++) {
+        final line = prior.draft.lines[index];
+        if (!line.stockTracked) continue;
+        final products = await tx.query(
+          'products',
+          where: 'sku = ?',
+          whereArgs: [line.sku],
+          limit: 1,
+        );
+        if (products.isEmpty) {
+          throw inventoryInvalid(
+            'Inventory product ${line.sku} is missing. Restore it before deleting this bill.',
+          );
+        }
+        final product = _productFromRow(products.single);
+        final quantity = product.quantity + line.quantity;
+        final revision = product.revision + 1;
+        if (quantity > maxStock || revision > maxStock) {
+          throw inventoryInvalid(
+            'Stock for ${line.sku} cannot be restored within the inventory limits. The bill has not been deleted.',
+          );
+        }
+        final movementId = _localId();
+        await tx.update(
+          'products',
+          {
+            'quantity': quantity,
+            'archived': 0,
+            'revision': revision,
+            'lastMovementId': movementId,
+            'updatedAt': now,
+          },
+          where: 'sku = ?',
+          whereArgs: [line.sku],
+        );
+        await tx.insert('movements', {
+          'id': movementId,
+          'sku': line.sku,
+          'type': 'adjustment',
+          'beforeQuantity': product.quantity,
+          'afterQuantity': quantity,
+          'delta': line.quantity,
+          'reason': 'Deleted bill $id: stock restored',
+          'actorUid': uid,
+          'revision': revision,
+          'createdAt': now,
+        });
+      }
+      // Keep stock history and an account-local tombstone. Retries must neither
+      // restore stock twice nor recreate a deleted QuickPrice checkout.
+      await tx.insert('settings', {
+        'key': 'bill-deleted/$id',
+        'value': jsonEncode({
+          'version': 1,
+          'billId': id,
+          'deletedAt': now,
+          'createdAt': prior.createdAt.toUtc().toIso8601String(),
+          'currency': prior.draft.currency,
+          'totalMinor': prior.draft.totalMinor,
+          'paidMinor': prior.paidMinor,
+        }),
+      });
+      await tx.delete('bill_documents', where: 'saleId = ?', whereArgs: [id]);
+      // Payments and follow-up scheduling are stored on the sale itself.
+      await tx.delete('sales', where: 'id = ?', whereArgs: [id]);
     });
   }
 

@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
@@ -5,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/storage/business_database_provider.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 
@@ -157,14 +160,21 @@ class _AccountingScreenState extends ConsumerState<AccountingScreen> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(row['description']! as String),
-                    subtitle: Text(
-                      '${row['type']} · ${row['category']} · ${row['currency']}',
-                    ),
-                    trailing: Text(
-                      formatMoney(
-                        row['amountMinor']! as int,
-                        row['currency']! as String,
-                      ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${row['type']} · ${row['category']} · ${row['currency']}',
+                        ),
+                        const SizedBox(height: 6),
+                        FinancialAmount(
+                          formatMoney(
+                            row['amountMinor']! as int,
+                            row['currency']! as String,
+                          ),
+                          compact: true,
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -180,16 +190,8 @@ class _AccountingScreenState extends ConsumerState<AccountingScreen> {
   }
 }
 
-Widget _metric(String label, String value) => Padding(
-  padding: const EdgeInsets.symmetric(vertical: 5),
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(label),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-    ],
-  ),
-);
+Widget _metric(String label, String value) =>
+    RecordFact(label: label, value: value);
 
 class _EntryDraft {
   const _EntryDraft(

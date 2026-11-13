@@ -206,8 +206,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(field('Business name'), findsNothing);
     expect(field('Business name shown in UPI app'), findsNothing);
-    await reveal(tester, find.text('Bill appearance'));
-    await tester.tap(find.text('Bill appearance'));
+    await reveal(tester, find.text('Bill preferences'));
+    await tester.tap(find.text('Bill preferences'));
     await tester.pumpAndSettle();
     expect(container.read(routerProvider).state.uri.path, '/bill-settings');
     expect(
@@ -324,13 +324,10 @@ void main() {
     await reveal(tester, find.text('Typography and colours'));
     await tester.tap(find.text('Typography and colours'));
     await tester.pumpAndSettle();
-    await reveal(tester, find.byType(DropdownButtonFormField<BillLayout>));
-    expect(tester.takeException(), isNull);
-    await tester.tap(find.byType(DropdownButtonFormField<BillLayout>));
+    await reveal(tester, find.byKey(const ValueKey('pdf-template-right')));
+    await tester.tap(find.byKey(const ValueKey('pdf-template-right')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Business details on the right').last);
-    await tester.pumpAndSettle();
     await reveal(tester, find.bySemanticsLabel('Shop logo preview'));
     expect(tester.takeException(), isNull);
     await reveal(tester, find.bySemanticsLabel('Signature preview'));

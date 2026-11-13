@@ -81,7 +81,7 @@ void main() {
       expect(find.text('₹8,400.00'), findsNothing);
       final copy = tester.widget<TextButton>(
         find.ancestor(
-          of: find.text('Copy price'),
+          of: find.text('Quotation'),
           matching: find.byType(TextButton),
         ),
       );
@@ -138,7 +138,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('₹6,300.00'), findsOneWidget);
-        expect(find.text('Copy price'), findsOneWidget);
+        expect(find.text('Quotation'), findsOneWidget);
         expect(tester.takeException(), isNull);
         tester.view.viewInsets = const FakeViewPadding(bottom: 280);
         await tester.pumpAndSettle();

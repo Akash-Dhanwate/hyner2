@@ -20,6 +20,7 @@ import '../../features/purchases/presentation/purchase_editor_screen.dart';
 import '../../features/purchases/presentation/purchases_screen.dart';
 import '../../features/purchase_orders/presentation/purchase_orders_screen.dart';
 import '../../features/quotations/presentation/quotations_screen.dart';
+import '../../features/quotations/presentation/quotation_screen.dart';
 import '../../features/reports/presentation/reports_screen.dart';
 import '../../features/sales/presentation/sales_screen.dart';
 import '../../features/sales/presentation/quickprice_checkout_screen.dart';
@@ -130,6 +131,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       _page('/expenses', const ExpensesScreen()),
       _page('/accounting', const AccountingScreen()),
       _page('/quotations', const QuotationsScreen()),
+      GoRoute(
+        path: '/quotations/quickprice/:estimateId',
+        builder: (_, state) => QuickPriceQuotationScreen(
+          estimateId: state.pathParameters['estimateId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/quotations/:id',
+        builder: (_, state) =>
+            SavedQuotationScreen(id: state.pathParameters['id']!),
+      ),
       _page('/purchase-orders', const PurchaseOrdersScreen()),
       _page('/purchases/new', const PurchaseEditorScreen()),
       GoRoute(

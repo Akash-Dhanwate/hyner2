@@ -150,6 +150,5 @@ final scheduledFollowUpsProvider = FutureProvider.autoDispose<List<Sale>>((
 final recentSalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
   final uid = ref.watch(inventoryUidProvider);
   if (uid == null) return [];
-  final page = await ref.watch(salesRepositoryProvider).list(uid);
-  return page.sales.take(3).toList();
+  return ref.watch(salesRepositoryProvider).recent(uid);
 });

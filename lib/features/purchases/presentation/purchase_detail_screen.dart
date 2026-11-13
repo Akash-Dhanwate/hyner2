@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -142,9 +144,10 @@ class PurchaseDetailScreen extends ConsumerWidget {
           children: [
             const Eyebrow('Purchase record'),
             const SizedBox(height: 10),
-            Text(
+            FinancialAmount(
               formatMoney(purchase.draft.totalMinor, purchase.draft.currency),
               style: Theme.of(context).textTheme.headlineMedium,
+              prominent: true,
             ),
             const SizedBox(height: 8),
             Text(
@@ -248,11 +251,12 @@ class PurchaseDetailScreen extends ConsumerWidget {
                         final record = items[index];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(
+                          title: FinancialAmount(
                             formatMoney(
                               record.totalMinor,
                               purchase.draft.currency,
                             ),
+                            compact: true,
                           ),
                           subtitle: Text(
                             '${record.reason} · ${purchaseDate(record.createdAt)}',

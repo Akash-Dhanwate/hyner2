@@ -1,8 +1,11 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../inventory/domain/product.dart';
+import '../../inventory/presentation/inventory_controller.dart';
 import '../domain/sale.dart';
 import 'sales_controller.dart';
 
@@ -45,9 +48,9 @@ class BillSummary extends StatelessWidget {
             ),
             Text('Ref: ${sale.id}', style: theme.textTheme.bodySmall),
             const SizedBox(height: 8),
-            Text(
+            FinancialAmount(
               formatMoney(sale.draft.totalMinor, sale.draft.currency),
-              style: theme.textTheme.titleMedium,
+              compact: true,
             ),
           ],
         ),
@@ -71,13 +74,14 @@ class _RecentBillsState extends ConsumerState<RecentBills> {
   }
 
   void _open({bool search = false}) => context.push<void>(
-    Uri(
-      path: '/sales/history',
-      queryParameters: {'search': search ? _search.text.trim() : ''},
-    ).toString(),
+    '/sales/history',
+    extra: search ? _search.text.trim() : '',
   );
   @override
   Widget build(BuildContext context) {
+    ref.listen(inventoryUidProvider, (previous, next) {
+      if (previous != next) _search.clear();
+    });
     final recent = ref.watch(recentSalesProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

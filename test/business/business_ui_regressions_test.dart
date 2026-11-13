@@ -55,6 +55,16 @@ class _Database extends Fake implements Database {
   }
 
   @override
+  Future<List<Map<String, Object?>>> rawQuery(
+    String sql, [
+    List<Object?>? arguments,
+  ]) async {
+    if (readError != null) throw readError!;
+    if (!sql.contains('FROM quotations')) throw UnimplementedError(sql);
+    return List.of(tables['quotations'] ?? []);
+  }
+
+  @override
   Future<int> insert(
     String table,
     Map<String, Object?> values, {

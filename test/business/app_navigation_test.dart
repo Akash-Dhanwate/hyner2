@@ -110,7 +110,7 @@ void main() {
       final router = container.read(routerProvider);
       for (final entry in [
         ('/inventory', 'No products yet'),
-        ('/sales', 'No products added yet.'),
+        ('/sales', 'Recent bills'),
         ('/sales/history', 'No sales yet'),
         ('/purchases', 'Record purchase'),
         ('/customers', 'Add customer'),

@@ -95,6 +95,79 @@ class _RateCardsScreenState extends State<RateCardsScreen> {
     await _load();
   }
 
+  Future<void> _rename(PricingProfileSummary profile) async {
+    final name = await showDialog<String>(
+      useRootNavigator: false,
+      context: context,
+      builder: (_) => _RenameCalculatorDialog(initialName: profile.name),
+    );
+    if (name == null || !mounted || name == profile.name) return;
+    setState(() => busy = true);
+    try {
+      final current = await widget.workspace.repository.readDraft(profile.id);
+      final card = current.card;
+      await widget.workspace.repository.saveDraft(
+        profile.id,
+        UniversalRateCardDraft(
+          name: name,
+          currency: card.currency,
+          description: card.description,
+          industryTemplate: card.industryTemplate,
+          categories: card.categories,
+          products: card.products,
+        ),
+        expectedRevision: current.revision,
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) setState(() => error = pricingError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _delete(PricingProfileSummary profile) async {
+    final confirmed = await showDialog<bool>(
+      useRootNavigator: false,
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete calculator?'),
+        content: Text(
+          '“${profile.name}” will be removed from your active calculators and can no longer be used for new calculations. Its calculator data is retained as archived pricing history; saved bills and estimates remain unchanged.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete calculator'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      // The repository's archive operation preserves immutable published
+      // versions, audit records, and snapshots already used by bills/estimates.
+      await widget.workspace.repository.archive(profile.id);
+      await _load();
+    } catch (e) {
+      if (mounted) setState(() => error = pricingError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> _advancedCreate() async {
     String name = '', currency = 'INR';
     final requested = await showDialog<bool>(
@@ -177,101 +250,175 @@ class _RateCardsScreenState extends State<RateCardsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Your calculators'),
-      actions: [
-        PopupMenuButton<String>(
-          onSelected: (_) => _advancedCreate(),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'advanced', child: Text('Advanced setup')),
-          ],
-        ),
-      ],
-    ),
-    body: SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const Text(
-                'Set rates once. Use them at the counter.',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.workspace.preview
-                    ? 'Browser preview · changes disappear when this page closes.'
-                    : 'Tap a saved calculator to use it. Edit its rates whenever you need.',
-              ),
-              if (error != null) MessageLine(error!, error: true),
-              if (profiles == null)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              if (profiles != null && profiles!.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 32),
-                  child: Text(
-                    'No selling rates are configured yet. Create your first calculator to begin.',
-                  ),
-                ),
-              for (final profile
-                  in (profiles ?? <PricingProfileSummary>[]).where(
-                    (p) => p.status != 'archived',
-                  ))
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.calculate_outlined),
-                  title: Text(
-                    profile.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    profile.status == 'published'
-                        ? 'Ready to use'
-                        : 'Finish your rates',
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    tooltip: 'Calculator options',
-                    onSelected: (action) =>
-                        _editRates(profile, advanced: action == 'advanced'),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'rates',
-                        child: Text('Edit selling rates'),
-                      ),
-                      PopupMenuItem(
-                        value: 'advanced',
-                        child: Text('Advanced settings'),
-                      ),
-                    ],
-                  ),
-                  onTap: busy
-                      ? null
-                      : () {
-                          if (profile.status == 'published' &&
-                              Navigator.canPop(context)) {
-                            Navigator.pop(context, profile.id);
-                          } else {
-                            _editRates(profile);
-                          }
-                        },
-                ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: busy ? null : _create,
-                icon: const Icon(Icons.add),
-                label: const Text('Create calculator'),
-              ),
+  Widget build(BuildContext context) {
+    final activeProfiles = (profiles ?? <PricingProfileSummary>[])
+        .where((profile) => profile.status != 'archived')
+        .toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Your calculators'),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (_) => _advancedCreate(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'advanced', child: Text('Advanced setup')),
             ],
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const Text(
+                  'Set rates once. Use them at the counter.',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.workspace.preview
+                      ? 'Browser preview · changes disappear when this page closes.'
+                      : 'Tap a saved calculator to use it. Edit its rates whenever you need.',
+                ),
+                if (error != null) MessageLine(error!, error: true),
+                if (profiles == null)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (profiles != null && activeProfiles.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: Text(
+                      'No selling rates are configured yet. Create your first calculator to begin.',
+                    ),
+                  ),
+                for (final profile in activeProfiles)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calculate_outlined),
+                    title: Text(
+                      profile.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      profile.status == 'published'
+                          ? 'Ready to use'
+                          : 'Finish your rates',
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Calculator options',
+                      onSelected: (action) {
+                        switch (action) {
+                          case 'rates':
+                            _editRates(profile);
+                          case 'advanced':
+                            _editRates(profile, advanced: true);
+                          case 'rename':
+                            _rename(profile);
+                          case 'delete':
+                            _delete(profile);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'rates',
+                          child: Text('Edit selling rates'),
+                        ),
+                        PopupMenuItem(
+                          value: 'advanced',
+                          child: Text('Advanced settings'),
+                        ),
+                        PopupMenuItem(
+                          value: 'rename',
+                          child: Text('Rename calculator'),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete calculator'),
+                        ),
+                      ],
+                    ),
+                    onTap: busy
+                        ? null
+                        : () {
+                            if (profile.status == 'published' &&
+                                Navigator.canPop(context)) {
+                              Navigator.pop(context, profile.id);
+                            } else {
+                              _editRates(profile);
+                            }
+                          },
+                  ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: busy ? null : _create,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create calculator'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RenameCalculatorDialog extends StatefulWidget {
+  const _RenameCalculatorDialog({required this.initialName});
+  final String initialName;
+
+  @override
+  State<_RenameCalculatorDialog> createState() =>
+      _RenameCalculatorDialogState();
+}
+
+class _RenameCalculatorDialogState extends State<_RenameCalculatorDialog> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initialName,
+  );
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final value = _name.text.trim();
+    if (value.isNotEmpty && value.length <= 120) {
+      Navigator.pop(context, value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename calculator'),
+    content: TextField(
+      key: const Key('rename-calculator-name'),
+      controller: _name,
+      autofocus: true,
+      maxLength: 120,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(labelText: 'Calculator name'),
+      onChanged: (_) => setState(() {}),
+      onSubmitted: (_) => _save(),
     ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('save-calculator-name'),
+        onPressed: _name.text.trim().isEmpty ? null : _save,
+        child: const Text('Save name'),
+      ),
+    ],
   );
 }
 

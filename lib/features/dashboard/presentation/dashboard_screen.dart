@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/routing/workspace_navigation.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../../core/performance/performance_recorder.dart';
 import '../../auth/presentation/session_controller.dart';
@@ -206,13 +207,10 @@ class _DashboardMetrics extends StatelessWidget {
                   children: [
                     Text(value.$2, style: theme.textTheme.bodySmall),
                     const SizedBox(height: 6),
-                    Text(
+                    FinancialAmount(
                       value.$3,
-                      key: ValueKey('dashboard-value-${value.$1}'),
-                      softWrap: true,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                      textKey: ValueKey('dashboard-value-${value.$1}'),
+                      compact: value.$1 != 'revenue',
                     ),
                   ],
                 ),

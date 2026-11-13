@@ -23,11 +23,15 @@ class QuickPriceScreen extends StatefulWidget {
     this.firebaseSetup,
     this.onExit,
     this.onCheckout,
+    this.onQuotation,
+    this.onQuotationHistory,
   });
   final QuickPriceWorkspace workspace;
   final Future<FirebaseSetupStatus>? firebaseSetup;
   final VoidCallback? onExit;
   final Future<String?> Function(QuickPriceEstimate estimate)? onCheckout;
+  final Future<void> Function(QuickPriceEstimate estimate)? onQuotation;
+  final VoidCallback? onQuotationHistory;
   @override
   State<QuickPriceScreen> createState() => _QuickPriceScreenState();
 }
@@ -287,6 +291,7 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
           estimate: estimate!,
           repository: estimateRepository,
           onCheckout: widget.onCheckout,
+          onQuotation: widget.onQuotation,
         ),
       ),
     );
@@ -305,6 +310,27 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     session.select(product);
     session.restore(edit.calculatorState);
     setState(() => editingLineId = edit.id);
+  }
+
+  Future<void> _quotation() async {
+    if (estimateBusy || widget.onQuotation == null || estimate == null) return;
+    if (estimate!.lines.isEmpty || estimate!.convertedSaleId != null) {
+      await _addToEstimate();
+    }
+    if (!mounted || estimate!.lines.isEmpty) return;
+    setState(() {
+      estimateBusy = true;
+      estimateError = null;
+    });
+    try {
+      await writer.flush();
+      await estimateRepository.save(estimate!);
+      await widget.onQuotation!(estimate!);
+    } catch (e) {
+      if (mounted) setState(() => estimateError = pricingError(e));
+    } finally {
+      if (mounted) setState(() => estimateBusy = false);
+    }
   }
 
   Future<void> _copy({bool share = false}) async {
@@ -326,7 +352,9 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Sharing is unavailable. Try Copy price.'),
+            content: Text(
+              'Sharing is unavailable. Try creating a quotation PDF.',
+            ),
           ),
         );
       }
@@ -397,6 +425,12 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
               child: const Icon(Icons.receipt_long_outlined),
             ),
           ),
+          if (widget.onQuotationHistory != null)
+            IconButton(
+              tooltip: 'Saved quotations',
+              onPressed: widget.onQuotationHistory,
+              icon: const Icon(Icons.folder_outlined),
+            ),
           IconButton(
             tooltip: 'Manage rates',
             onPressed: _manage,
@@ -685,8 +719,14 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
   Widget _secondaryActions() {
     final large = MediaQuery.textScalerOf(context).scale(16) > 22;
     final copy = TextButton(
-      onPressed: session.result == null ? null : _copy,
-      child: const Text('Copy price', textAlign: TextAlign.center),
+      key: const Key('quickprice-quotation'),
+      onPressed:
+          estimateBusy ||
+              widget.onQuotation == null ||
+              (session.result == null && estimate?.lines.isNotEmpty != true)
+          ? null
+          : _quotation,
+      child: const Text('Quotation', textAlign: TextAlign.center),
     );
     final breakdown = TextButton(
       onPressed: session.result == null ? null : _showBreakdown,

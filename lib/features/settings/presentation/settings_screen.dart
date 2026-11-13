@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,10 @@ import '../../inventory/presentation/inventory_controller.dart';
 import '../domain/payment_settings.dart';
 import 'payment_settings_controller.dart';
 import 'settings_image_helper.dart';
+import '../../../core/images/image_editor_screen.dart';
+import 'bill_template_selector.dart';
+import '../../../core/widgets/account_scope_guard.dart';
+import 'theme_preset_picker.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -37,15 +42,17 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 24),
         ListTile(
           leading: const Icon(Icons.receipt_long_outlined),
-          title: const Text('Bill appearance'),
+          title: const Text('Bill preferences'),
           subtitle: const Text(
-            'Business name, logo, signature and bill layout',
+            'Business details, document layout and appearance',
           ),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () =>
               openWorkspacePage(GoRouter.of(context), '/bill-settings'),
         ),
         const SizedBox(height: 24),
+        const ThemePresetPicker(),
+        const SizedBox(height: 20),
         DisclosureSection(
           title: 'App appearance',
           summary: switch (mode) {
@@ -125,7 +132,7 @@ class SettingsScreen extends ConsumerWidget {
         Text('Hyner', style: theme.textTheme.titleLarge),
         const SizedBox(height: 6),
         Text(
-          'Version 0.7.0 · Business workspace and QuickPrice',
+          'Version 0.8.4 · Business workspace and QuickPrice',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -165,7 +172,7 @@ class BillAppearanceScreen extends ConsumerWidget {
       ),
       const SizedBox(height: 12),
       Text(
-        'Bill appearance',
+        'Bill preferences',
         style: Theme.of(context).textTheme.headlineMedium,
       ),
       const SizedBox(height: 16),
@@ -683,31 +690,46 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
     super.dispose();
   }
 
-  Future<void> _pickImage({required bool signature}) async {
+  Future<void> _pickImage({required bool signature, bool edit = false}) async {
     if (!_editable) return;
     setState(() {
       _picking = true;
       _error = null;
     });
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
-        withData: true,
-        allowMultiple: false,
-      );
-      if (!_currentAccount || result == null || result.files.isEmpty) return;
-      final file = result.files.single;
-      if (file.size > maxSettingsImageBytes) {
-        throw const FormatException('Choose an image no larger than 8 MB.');
-      }
-      final bytes = file.bytes;
-      if (bytes == null) {
-        throw const FormatException(
-          'This image cannot be read. Try another image.',
+      Uint8List bytes;
+      if (edit) {
+        bytes = base64Decode(signature ? _signatureBase64 : _logoBase64);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+          withData: true,
+          allowMultiple: false,
         );
+        if (!_currentAccount || result == null || result.files.isEmpty) return;
+        final file = result.files.single;
+        if (file.size > maxSettingsImageBytes || file.bytes == null) {
+          throw const FormatException(
+            'Choose a readable image no larger than 8 MB.',
+          );
+        }
+        bytes = file.bytes!;
       }
-      final prepared = await prepareSettingsImage(bytes);
+      if (!mounted || !_currentAccount) return;
+      final prepared = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => AccountScopeGuard(
+            uid: _uid!,
+            child: ImageEditorScreen(
+              bytes: bytes,
+              title: signature ? 'Edit signature' : 'Edit shop logo',
+              signature: signature,
+            ),
+          ),
+        ),
+      );
+      if (prepared == null) return;
       if (!_currentAccount) return;
       setState(() {
         final encoded = base64Encode(prepared);
@@ -740,6 +762,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
       const SizedBox(height: 16),
       TextField(
         controller: _name,
+        onChanged: (_) => setState(() {}),
         enabled: _editable,
         maxLength: 80,
         textCapitalization: TextCapitalization.words,
@@ -753,6 +776,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
       const SizedBox(height: 12),
       TextField(
         controller: _phone,
+        onChanged: (_) => setState(() {}),
         keyboardType: TextInputType.phone,
         autofillHints: const [AutofillHints.telephoneNumber],
         enabled: _editable,
@@ -765,6 +789,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
       const SizedBox(height: 12),
       TextField(
         controller: _address,
+        onChanged: (_) => setState(() {}),
         enabled: _editable,
         maxLength: 240,
         maxLines: 2,
@@ -780,6 +805,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
         children: [
           TextField(
             controller: _taxId,
+            onChanged: (_) => setState(() {}),
             enabled: _editable,
             maxLength: 40,
             decoration: const InputDecoration(
@@ -789,6 +815,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
           const SizedBox(height: 12),
           TextField(
             controller: _footer,
+            onChanged: (_) => setState(() {}),
             enabled: _editable,
             maxLength: 160,
             decoration: const InputDecoration(labelText: 'Footer message'),
@@ -798,7 +825,7 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
       ),
       DisclosureSection(
         title: 'Typography and colours',
-        summary: 'Section colours, title size and header layout',
+        summary: 'Section colours and title size',
         revealError: _invalidColors.isNotEmpty,
         children: [
           Text(
@@ -889,38 +916,27 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
                 : (value) => setState(() => _fontSize = value),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<BillLayout>(
-            key: ValueKey((_loading, _layout)),
-            isExpanded: true,
-            initialValue: _layout,
-            decoration: const InputDecoration(labelText: 'Bill header layout'),
-            selectedItemBuilder: (context) => const [
-              Text(
-                'Right aligned',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text('Centered', maxLines: 1, overflow: TextOverflow.ellipsis),
-            ],
-            items: const [
-              DropdownMenuItem(
-                value: BillLayout.right,
-                child: Text('Business details on the right'),
-              ),
-              DropdownMenuItem(
-                value: BillLayout.centered,
-                child: Text('Business details in the center'),
-              ),
-            ],
-            onChanged: !_editable
-                ? null
-                : (value) {
-                    if (value != null) setState(() => _layout = value);
-                  },
-          ),
           const SizedBox(height: 12),
         ],
       ),
+      BillTemplateSelector(
+        uid: _uid,
+        settings: PaymentSettings(
+          merchantName: _name.text,
+          businessPhone: _phone.text,
+          businessAddress: _address.text,
+          taxId: _taxId.text,
+          billLayout: _layout,
+          headerFontSize: _fontSize,
+          footerText: _footer.text,
+          logoBase64: _logoBase64,
+          signatureBase64: _signatureBase64,
+          fontColors: Map.of(_fontColors),
+        ),
+        enabled: _editable,
+        onChanged: (layout) => setState(() => _layout = layout),
+      ),
+      const SizedBox(height: 20),
       DisclosureSection(
         title: 'Logo and signature',
         summary: 'Images for printed and shared bills',
@@ -972,6 +988,22 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
                       : 'Replace signature',
                 ),
               ),
+              if (_logoBase64.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: !_editable
+                      ? null
+                      : () => _pickImage(signature: false, edit: true),
+                  icon: const Icon(Icons.crop_rotate),
+                  label: const Text('Edit logo crop'),
+                ),
+              if (_signatureBase64.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: !_editable
+                      ? null
+                      : () => _pickImage(signature: true, edit: true),
+                  icon: const Icon(Icons.crop_rotate),
+                  label: const Text('Edit signature crop'),
+                ),
               if (_logoBase64.isNotEmpty)
                 TextButton(
                   onPressed: !_editable

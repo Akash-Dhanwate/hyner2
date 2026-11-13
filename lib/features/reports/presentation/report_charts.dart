@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/business_report.dart';
 import '../../../core/widgets/workspace_components.dart';
-
-const salesChartColor = Color(0xff216b52);
-const expenseChartColor = Color(0xffaf6c36);
-const dueChartColor = Color(0xff977538);
+import '../../../app/theme/theme_preset.dart';
 
 class ReportLegend extends StatelessWidget {
   const ReportLegend({super.key});
@@ -16,9 +13,17 @@ class ReportLegend extends StatelessWidget {
   Widget build(BuildContext context) => Wrap(
     spacing: 18,
     runSpacing: 8,
-    children: const [
-      _LegendItem(color: salesChartColor, label: 'Sales revenue'),
-      _LegendItem(color: expenseChartColor, label: 'Recorded expenses'),
+    children: [
+      _LegendItem(
+        color: Theme.of(context).colorScheme.primary,
+        label: 'Sales revenue',
+      ),
+      _LegendItem(
+        color:
+            Theme.of(context).extension<HynerStatusColors>()?.warning ??
+            Theme.of(context).colorScheme.tertiary,
+        label: 'Recorded expenses',
+      ),
     ],
   );
 }
@@ -111,6 +116,10 @@ class _ActivityBarChartState extends State<ActivityBarChart> {
                       maxValue: maxValue,
                       lineColor: theme.colorScheme.outlineVariant,
                       labelColor: theme.colorScheme.onSurfaceVariant,
+                      salesColor: theme.colorScheme.primary,
+                      expenseColor:
+                          theme.extension<HynerStatusColors>()?.warning ??
+                          theme.colorScheme.tertiary,
                     ),
                   ),
                 ),
@@ -183,6 +192,12 @@ class PaymentDonutChart extends StatelessWidget {
                   received: report.paidRevenueMinor,
                   due: report.unpaidRevenueMinor,
                   track: theme.colorScheme.surfaceContainerHighest,
+                  receivedColor:
+                      theme.extension<HynerStatusColors>()?.success ??
+                      theme.colorScheme.primary,
+                  dueColor:
+                      theme.extension<HynerStatusColors>()?.warning ??
+                      theme.colorScheme.tertiary,
                 ),
               ),
             ),
@@ -195,13 +210,17 @@ class PaymentDonutChart extends StatelessWidget {
                 Text('Payment status', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 10),
                 _LegendItem(
-                  color: salesChartColor,
+                  color:
+                      theme.extension<HynerStatusColors>()?.success ??
+                      theme.colorScheme.primary,
                   label:
                       'Received · ${formatBigMoney(report.paidRevenueMinor, report.currency)}',
                 ),
                 const SizedBox(height: 8),
                 _LegendItem(
-                  color: dueChartColor,
+                  color:
+                      theme.extension<HynerStatusColors>()?.warning ??
+                      theme.colorScheme.tertiary,
                   label:
                       'Balance due · ${formatBigMoney(report.unpaidRevenueMinor, report.currency)}',
                 ),
@@ -242,12 +261,15 @@ class _ActivityChartPainter extends CustomPainter {
     required this.maxValue,
     required this.lineColor,
     required this.labelColor,
+    required this.salesColor,
+    required this.expenseColor,
   });
 
   final List<ReportActivityPoint> activity;
   final BigInt maxValue;
   final Color lineColor;
   final Color labelColor;
+  final Color salesColor, expenseColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -268,8 +290,8 @@ class _ActivityChartPainter extends CustomPainter {
     final slotWidth = (size.width - left - right) / activity.length;
     final barWidth = math.min(33.0, slotWidth * .36);
     final maxDouble = maxValue.toDouble();
-    final salesPaint = Paint()..color = salesChartColor;
-    final expensePaint = Paint()..color = expenseChartColor;
+    final salesPaint = Paint()..color = salesColor;
+    final expensePaint = Paint()..color = expenseColor;
     for (var i = 0; i < activity.length; i++) {
       final point = activity[i];
       final center = left + slotWidth * (i + .5);
@@ -324,7 +346,9 @@ class _ActivityChartPainter extends CustomPainter {
       oldDelegate.activity != activity ||
       oldDelegate.maxValue != maxValue ||
       oldDelegate.lineColor != lineColor ||
-      oldDelegate.labelColor != labelColor;
+      oldDelegate.labelColor != labelColor ||
+      oldDelegate.salesColor != salesColor ||
+      oldDelegate.expenseColor != expenseColor;
 }
 
 class _PaymentDonutPainter extends CustomPainter {
@@ -332,11 +356,14 @@ class _PaymentDonutPainter extends CustomPainter {
     required this.received,
     required this.due,
     required this.track,
+    required this.receivedColor,
+    required this.dueColor,
   });
 
   final BigInt received;
   final BigInt due;
   final Color track;
+  final Color receivedColor, dueColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -355,12 +382,12 @@ class _PaymentDonutPainter extends CustomPainter {
     if (total == BigInt.zero) return;
     final receivedSweep = math.pi * 2 * received.toDouble() / total.toDouble();
     final receivedPaint = Paint()
-      ..color = salesChartColor
+      ..color = receivedColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
     final duePaint = Paint()
-      ..color = dueChartColor
+      ..color = dueColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
@@ -378,5 +405,7 @@ class _PaymentDonutPainter extends CustomPainter {
   bool shouldRepaint(covariant _PaymentDonutPainter oldDelegate) =>
       oldDelegate.received != received ||
       oldDelegate.due != due ||
-      oldDelegate.track != track;
+      oldDelegate.track != track ||
+      oldDelegate.receivedColor != receivedColor ||
+      oldDelegate.dueColor != dueColor;
 }

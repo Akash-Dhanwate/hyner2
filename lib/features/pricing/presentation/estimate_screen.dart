@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,10 +14,12 @@ class EstimateScreen extends StatefulWidget {
     required this.estimate,
     required this.repository,
     this.onCheckout,
+    this.onQuotation,
   });
   final QuickPriceEstimate estimate;
   final EstimateRepository repository;
   final Future<String?> Function(QuickPriceEstimate estimate)? onCheckout;
+  final Future<void> Function(QuickPriceEstimate estimate)? onQuotation;
   @override
   State<EstimateScreen> createState() => _EstimateScreenState();
 }
@@ -60,6 +64,22 @@ class _EstimateScreenState extends State<EstimateScreen> {
           () => error = 'The estimate could not be shared. Try copying it.',
         );
       }
+    }
+  }
+
+  Future<void> _quotation() async {
+    if (busy || estimate.lines.isEmpty || widget.onQuotation == null) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.repository.save(estimate);
+      await widget.onQuotation!(estimate);
+    } catch (e) {
+      if (mounted) setState(() => error = pricingError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
 
@@ -257,12 +277,13 @@ class _EstimateScreenState extends State<EstimateScreen> {
                                 'Quantity: ${line.pricing.quantity} · ${line.pricing.unitPriceRounded ? 'Approx. ' : ''}${moneyText(BigInt.from(line.pricing.unitPriceMinor), currency!)} per item',
                               ),
                               const SizedBox(height: 4),
-                              Text(
+                              FinancialAmount(
                                 moneyText(
                                   BigInt.from(line.pricing.totalMinor),
                                   currency,
                                 ),
                                 style: theme.textTheme.titleLarge,
+                                compact: true,
                               ),
                             ],
                           ),
@@ -280,18 +301,31 @@ class _EstimateScreenState extends State<EstimateScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('${estimate.lines.length} items · Estimated total'),
-                    Text(
+                    FinancialAmount(
                       moneyText(estimate.totalMinor, currency),
-                      key: const Key('estimate-grand-total'),
+                      textKey: const Key('estimate-grand-total'),
                       style: theme.textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
+                      prominent: true,
                     ),
                     if (estimate.lines.any((line) => line.pricing.taxMinor > 0))
                       Text(
                         'Excluding tax ${moneyText(estimate.lines.fold<BigInt>(BigInt.zero, (total, line) => total + BigInt.from(line.pricing.netMinor)), currency)} · Tax ${moneyText(estimate.lines.fold<BigInt>(BigInt.zero, (total, line) => total + BigInt.from(line.pricing.taxMinor)), currency)}',
                       ),
                     const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      key: const Key('estimate-quotation'),
+                      onPressed:
+                          busy ||
+                              widget.onQuotation == null ||
+                              estimate.convertedSaleId != null
+                          ? null
+                          : _quotation,
+                      icon: const Icon(Icons.request_quote_outlined),
+                      label: const Text('Quotation PDF'),
+                    ),
+                    const SizedBox(height: 6),
                     FilledButton.icon(
                       key: const Key('estimate-checkout'),
                       onPressed: busy || widget.onCheckout == null
