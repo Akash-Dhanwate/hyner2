@@ -190,7 +190,7 @@ class _CustomerDialogState extends State<_CustomerDialog> {
   final _notes = TextEditingController();
   final _address = TextEditingController();
   String? _error;
-  bool _whatsappOptIn = true;
+  bool _whatsappOptIn = false;
 
   @override
   void dispose() {
@@ -256,7 +256,7 @@ class _CustomerDialogState extends State<_CustomerDialog> {
                 setState(() => _whatsappOptIn = value == true),
             title: const Text('WhatsApp product updates allowed'),
             subtitle: const Text(
-              'Only include customers who agreed to receive updates.',
+              'Leave unchecked unless the customer has agreed to receive product updates.',
             ),
           ),
           if (_error != null) ...[

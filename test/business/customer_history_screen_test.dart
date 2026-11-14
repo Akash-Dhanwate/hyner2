@@ -293,6 +293,34 @@ void main() {
     },
   );
 
+  testWidgets('new customer WhatsApp consent starts off and is optional', (
+    tester,
+  ) async {
+    await mount(tester);
+    await tester.tap(find.byKey(const Key('add-customer')));
+    await tester.pumpAndSettle();
+    final consent = tester.widget<CheckboxListTile>(
+      find.byType(CheckboxListTile),
+    );
+    expect(consent.value, isFalse);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Customer name'),
+      'New Buyer',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Phone (optional)'),
+      '9876543210',
+    );
+    await tester.tap(find.text('Save customer'));
+    await tester.pumpAndSettle();
+    final added = customers.accounts[testIdentity.uid]!.singleWhere(
+      (value) => value.name == 'New Buyer',
+    );
+    expect(added.whatsappOptIn, isFalse);
+    expect(added.whatsappOptInAt, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'detail shows identity, added date and separate currency totals',
     (tester) async {

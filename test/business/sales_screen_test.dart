@@ -517,7 +517,7 @@ void main() {
   });
 
   testWidgets(
-    'WhatsApp defaults to all and manages saved preferences from one page',
+    'WhatsApp customers default to opt out and manage saved preferences',
     (tester) async {
       await mount(tester);
       final customers =
@@ -533,12 +533,18 @@ void main() {
       container.read(routerProvider).go('/whatsapp');
       await tester.pumpAndSettle();
       final aliceSwitch = find.widgetWithText(SwitchListTile, 'Alice');
-      await tap(tester, aliceSwitch);
       expect(
         (await customers.list(testIdentity.uid))
             .firstWhere((customer) => customer.id == a.id)
             .whatsappOptIn,
         isFalse,
+      );
+      await tap(tester, aliceSwitch);
+      expect(
+        (await customers.list(testIdentity.uid))
+            .firstWhere((customer) => customer.id == a.id)
+            .whatsappOptIn,
+        isTrue,
       );
       await tap(tester, find.text('Enable updates for all customers'));
       expect(

@@ -267,7 +267,10 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
     if (confirmed != true) return;
     setState(() => _busy = true);
     try {
-      final restored = await BackupService.pickAndRestore(uid);
+      final restored = await BackupService.pickAndRestore(
+        uid,
+        isWorkspaceCurrent: () => ref.read(inventoryUidProvider) == uid,
+      );
       if (mounted && restored) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

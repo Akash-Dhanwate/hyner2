@@ -168,6 +168,7 @@ class FakeCustomers implements CustomerRepository {
       notes: draft.notes,
       address: draft.address,
       whatsappOptIn: draft.whatsappOptIn,
+      whatsappOptInAt: draft.whatsappOptIn ? now : null,
       createdAt: now,
       updatedAt: now,
     );

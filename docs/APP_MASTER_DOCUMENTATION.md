@@ -4974,3 +4974,29 @@ APK files in `build/app/outputs/flutter-apk/`:
 - `hyner-0.8.4-calculator-actions-universal.apk`: 78,427,286 bytes; SHA-256 `10cb90dc4b6983131ad30cd56524195d31db55df6a718a597d85ddf9d0dd5477`.
 
 Verifier reports: `build/optimization/artifacts-calculator-actions-split.json` and `build/optimization/artifacts-calculator-actions-universal.json`.
+
+# 25. MVP reliability implementation update (2026-11-14)
+
+This section records two scoped safety changes from the Hyner MVP completion work. It does not claim the requested MVP is complete; see [HYNER_MVP_COMPLETION_REPORT.md](HYNER_MVP_COMPLETION_REPORT.md) for the feature gap matrix, tests, limits and release decision.
+
+## 25.1 Customer marketing consent
+
+The local business schema is now version 13. `customers.whatsappOptIn` defaults to `0`, and `customers.whatsappOptInAt` stores the timestamp for a newly explicit opt-in. `Customer` and `CustomerDraft` default to opted out. The customer form asks for agreement and starts unchecked. The row mapper stores the timestamp when consent is explicitly selected and clears it when the customer opts out.
+
+The v13 migration resets legacy opt-in flags because earlier schema migrations could silently set them to true; the old database does not contain enough evidence to distinguish an actual choice from a migration default. This is a restrictive migration: customer and financial rows remain, but a customer with a legitimate old opt-in must confirm again. The column check runs before customer-link repair so upgrades from older schema versions can create repaired customer rows safely.
+
+Backup JSON schema 11 contains consent timestamps. During restore, a consent flag is preserved only for schema 11 with a valid timestamp. Supported older backups continue to restore, with contacts opted out. Existing WhatsApp campaign filtering remains based on the opt-in flag. Physical WhatsApp behavior was not tested.
+
+## 25.2 Purchase dialog workspace binding
+
+Supplier payment and purchase-return confirmation handlers in `lib/features/purchases/presentation/purchase_detail_screen.dart` capture the active workspace before opening their dialog. They check that the same workspace is still selected after the dialog and after the repository call before refreshing UI state. A delayed confirmation therefore does not silently use a newly selected workspace. Repository purchase/return logic and database schema did not change.
+
+## 25.3 Backup selection input bounds
+
+`BackupService.pickAndRestore` no longer asks the file picker to load arbitrary selected data into memory. It checks the reported size and the bytes read from the selected file path against a 64 MiB maximum, rejects empty files, and checks that the Settings workspace still matches the workspace captured before the picker opened before calling the existing restore method. The cap is an input safety limit, not a claim that the backup is complete. Pricing database, image and preference coverage, checksums, encryption, and staged multi-database recovery remain absent.
+
+## 25.4 Verification and release status
+
+`flutter analyze --no-pub` reported no issues. Focused customer migration/storage, backup size-bound, and business UI/data tests passed. The final full test suite passed (**761 passed, 4 skipped, 0 failed**). The profile media test that failed during an earlier full-suite run passed when run alone; its isolated run logged a handled missing `printingInfo` plugin warning. No production data was used.
+
+These changes do not close the MVP gaps in complete dual-database backup/restore, customer returns/refunds, traceable bill corrections, dated payment ledger and collection reporting, measured-product inventory mapping, supplier financial reconciliation, full account-switch testing, or physical Android release verification. The release recommendation remains **NO-GO for real-business production use** until those blockers are addressed.
