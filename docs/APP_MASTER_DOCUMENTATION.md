@@ -1,8 +1,8 @@
 # Hyner — Application Master Documentation
 
-> **Repository audit date:** 2026-11-13, Asia/Kolkata. **Current application version:** `0.8.4+16` in `pubspec.yaml` (build code 16 carries the calculator-management APK). **Branch:** `test1`. **HEAD:** `256b79a661944b29e7f82605899b86cb692a87d6` at original audit time.
+> **Current source snapshot recheck:** 2026-11-14, Asia/Kolkata. **Current application version:** `0.8.4+16` in `pubspec.yaml`. **Branch:** `test2`. **HEAD:** `ee06c23` (`new feactures are implemented`). See section 26 for the exact current-snapshot scope. The original static audit below was performed on 2026-11-13, branch `test1`, HEAD `256b79a661944b29e7f82605899b86cb692a87d6`; those facts are historical, not current repository metadata.
 >
-> This documents the **working tree**, including existing uncommitted and untracked implementation files, not just HEAD. The original documentation was generated as a static, read-only audit. The subsequent **authorized UI polish update (0.8.2)** is documented in section 22 and updates the relevant references here. That later implementation runs synthetic tests and release builds; it does not change business schemas, rules, integrations or merchant records. Original audit-only verification statements below are historical to that audit phase; section 22 records current UI verification.
+> This document combines the 2026-11-13 source audit with later implementation notes. The current working tree is **not clean**: it contains staged work already present at the beginning of the 2026-11-14 continuation plus new onboarding, Help, PDF filename, and documentation edits. No reset or cleanup was performed. Sections 22–26 record prior dated changes; section 27 records the current UI/onboarding/Play-readiness continuation. Historical audit statements remain explicitly identified as historical.
 >
 > **Evidence vocabulary:** **Verified** means supported by inspected repository source or configuration; **Historical evidence** means an existing log/report, not a fresh check; **Potential risk** is a reasoned concern, not a reproduced failure; **Unknown / Not verified** identifies missing evidence. No credentials, configuration values identifying cloud registrations, authentication tokens, connection strings, or private database records are reproduced here.
 
@@ -30,6 +30,14 @@
 20. [Glossary](#20-glossary)
 21. [Verification and evidence](#21-repository-verification-and-evidence)
 22. [UI polish update, audit and implementation report](#22-ui-polish-update-082)
+23. [Bill and quotation readability follow-up](#23-bill-and-quotation-readability-follow-up)
+24. [Calculator management follow-up](#24-calculator-management-follow-up)
+25. [MVP reliability implementation update](#25-mvp-reliability-implementation-update-2026-11-14)
+26. [Current repository re-verification](#26-current-repository-re-verification-2026-11-14)
+27. [Premium UX, onboarding and Play readiness update](#27-premium-ux-onboarding-and-play-readiness-update-2026-11-14)
+28. [QuickPrice inventory tracking and daily business summary](#28-quickprice-inventory-tracking-and-daily-business-summary-2026-11-14)
+29. [First-time guide, PDF naming and Play readiness continuation](#29-first-time-guide-pdf-naming-and-play-readiness-continuation-2026-11-14)
+30. [Advanced calculator to Inventory linking](#30-advanced-calculator-to-inventory-linking-2026-11-14)
 
 # 1. Application overview
 
@@ -337,7 +345,7 @@ hyner2/
 
 #### `lib/core/storage/backup_service.dart`
 - **Purpose:** Export/share a register snapshot and pick/parse a replacement backup; excludes pricing and profile files.
-- **Major declarations / operations (name:line):** `BackupService:11`, `exportAndShare:14`, `pickAndRestore:37`.
+- **Major declarations / operations (name:line):** `BackupService:11`, `maxBackupFileBytes:14`, `exportAndShare:24`, `pickAndRestore:47`.
 - **Imported/exported by production:** `lib/features/settings/presentation/settings_screen.dart:15`
 - **Direct test consumers:** None in authored Dart imports.
 - **Local dependencies:** `lib/core/storage/local_business_database.dart`, `lib/core/storage/generated_backup_files.dart`
@@ -3223,7 +3231,8 @@ phone TEXT NOT NULL,
 identityKey TEXT,
 address TEXT NOT NULL DEFAULT '',
 notes TEXT NOT NULL,
-whatsappOptIn INTEGER NOT NULL DEFAULT 1,
+whatsappOptIn INTEGER NOT NULL DEFAULT 0,
+whatsappOptInAt TEXT,
 createdAt TEXT NOT NULL,
 updatedAt TEXT NOT NULL
 );
@@ -4054,7 +4063,7 @@ Important JSON contracts: sale lines contain sku/name/quantity/prices/cost/param
 | Saved settings image | 2 MiB; resized long edge at most 1,024 | Base64 representation is about 4/3 of encoded byte size. Two images can substantially enlarge settings/backups. |
 | Cropped profile persistence | At most 2 MiB accepted by native file store; profile export bounded by crop UI | Written as a new PNG; no discovered total-count quota or old-file cleanup. |
 | Generated backup/share temp retention | Seven days; cleanup at most daily, up to 1,000 candidates/pass | Best-effort cache hygiene, excludes current-session/active files. Durable bill archives are not expired by this policy. |
-| Business backup whole-file limit | No explicit total cap found in `BackupService` | Entire export/picked file is materialized; large registers can exhaust memory. |
+| Backup size limits | Restore input is capped at 64 MiB in `BackupService.maxBackupFileBytes`; no export-size cap | Restore validates reported and read byte lengths before JSON decoding. Export still creates a full JSON snapshot and may use substantial memory/storage. This cap does not mean backup data coverage is complete. |
 
 ## 6.2 Growth and illustrative sizing
 
@@ -4105,7 +4114,7 @@ There is no active central business-record cloud store to which these totals can
 | **Reports and analytics** | Filter period/currency; review revenue/due/known-cost earnings/activity/top products; print/save PDF. Entry: `/reports and Home`. | `lib/features/reports/data/local_reports_repository.dart`<br>`lib/features/reports/domain/business_report.dart`<br>`lib/features/reports/data/report_pdf_service.dart`<br>Surface: `load, earningsAfterCostsMinor, ReportPdfService.build`. | sales/purchases/purchase_returns/operating_expenses/products. | Current uid; no external analytics API. | Implemented local aggregation; received by bill creation date, manual accounting excluded, cost gaps disclosed. |
 | **Manual accounting and purchase orders** | Enter income/expense/tax record or supplier planned scope/total; browse register. Entry: `/accounting, /purchase-orders`. | `lib/features/accounting/presentation/accounting_screen.dart`<br>`lib/features/purchase_orders/presentation/purchase_orders_screen.dart`<br>Surface: `_addEntry, _add; direct SQL providers`. | accounting_entries, purchase_orders. | Current uid. | Basic implemented registers; no double-entry ledger, receiving conversion or status workflow; accounting latest100. |
 | **WhatsApp product updates and reminders** | Select included opted-in contacts, build product/message/link, open drafts one at a time; handle due queue. Entry: `/whatsapp; saved bill reminder controls`. | `lib/features/whatsapp/presentation/whatsapp_screen.dart`<br>`lib/features/sales/data/local_sales_repository.dart`<br>`android/app/src/main/kotlin/com/hyner/hyner/MainActivity.kt`<br>Surface: `_startCampaign, _openNextCampaignMessage, setFollowUp, _sendFollowUp`. | customers/products/sales.followupAt; transient queue; external WhatsApp. | Opted-in current contact + manual external send; migration caveat. | Implemented manual handoff; no WhatsApp Business API automation, send receipt or background delivery scheduler. |
-| **Backups and recovery** | Export register to shared JSON; restore matching-account compatible snapshot after replacement confirmation. Entry: `Settings backup controls`. | `lib/core/storage/backup_service.dart`<br>`lib/core/storage/local_business_database.dart`<br>`lib/core/storage/generated_backup_files.dart`<br>Surface: `exportAndShare, exportFor, pickAndRestore, restoreFor`. | All 13 business tables including archives/tombstones; temp files. | Matching accountUid; user chooses file and confirms replacement. | Implemented register-only backup; no encryption/streaming; pricing/profile/photos excluded; reopen to refresh. |
+| **Backups and recovery** | Export register to shared JSON; restore matching-account compatible snapshot after replacement confirmation. Entry: `Settings backup controls`. | `lib/core/storage/backup_service.dart`<br>`lib/core/storage/local_business_database.dart`<br>`lib/core/storage/generated_backup_files.dart`<br>Surface: `exportAndShare, exportFor, pickAndRestore, restoreFor`. | All 13 business tables including archives/tombstones; temp files. | Matching accountUid; user chooses file and confirms replacement. | Register-only backup; restore input capped at 64 MiB; export remains in-memory/unbounded; no encryption/manifest/checksum; pricing/profile/photos excluded; reopen to refresh. |
 | **Multi-account / multi-business boundaries** | Switch device/remote account and open isolated local register/pricing scope. Entry: `Auth and workspace shell`. | `lib/features/auth/data/device_access_repository.dart`<br>`lib/core/storage/local_business_database.dart`<br>`lib/core/storage/open_pricing_database.dart`<br>`lib/features/pricing/data/device_workspace.dart`<br>Surface: `currentUser, databaseFor, localPricingDatabaseName, openDeviceWorkspace`. | Per-uid files and local singleton pricing business id. | Client account separation; no server membership administration. | Account-scoped local storage implemented; multi-store selection/shared staff/central organization not implemented. |
 | **Roles, subscriptions and cloud sync** | PricingPermission models guard selected local actions; no staff management or paid-plan enforcement flow. Entry: `No implemented administration UI`. | `lib/features/pricing/domain/pricing_repository.dart`<br>`lib/features/pricing/data/device_workspace.dart`<br>Surface: `PricingSession.require; full local permission grant`. | Local session only; no role/subscription/sync tables. | Client guard is not backend authority. | Partial permission model only; backend roles, subscriptions and sync are documented pending in README, not implemented. |
 | **Application colour themes** | Settings → Theme: preview and choose Slate Blue, Sage Green, Warm Copper or Muted Violet; appearance mode remains separate. | `lib/app/theme/theme_preset.dart`<br>`lib/app/theme/app_theme.dart`<br>`lib/features/settings/presentation/theme_preset_picker.dart`<br>`lib/app/theme/appearance_repository.dart` | SharedPreferences `hyner.theme.preset`; no business table or API. | Device preference; no staff/security-policy effect. | Implemented 0.8.2; eight cached theme/brightness combinations, saved selection and recoverable failure. |
@@ -4504,12 +4513,12 @@ Critical would mean a demonstrated severe compromise/data-loss path requiring im
 |---|---|---|---|---|
 | H1 | High before public distribution | Confirmed configuration | `android/app/build.gradle.kts`, release.signingConfig uses debug | Development signing is not a production key-management process. Plan a controlled signing/update migration; do not casually change the certificate for existing installations. |
 | H2 | High verification gap | Confirmed absence, live exposure Unknown | No Firestore rules/index deployment sources; legacy cloud reads and dormant write adapters exist | Cloud authorization cannot be assessed from this repo. Obtain deployed rules/index evidence and emulator tests before enabling additional cloud features. This is not proof the live database is public. |
-| H3 | High for consent semantics | Confirmed source behavior | LocalBusinessDatabase onUpgrade oldVersion <11 updates all customers whatsappOptIn=1; CustomerDraft default true | Upgrade overwrites an existing false flag. Review intended consent semantics and migrations; external-send confirmation does not preserve an explicit stored opt-out. |
+| H3 | Historical finding; corrected in schema v13 | Confirmed prior behavior and current correction | Before v13, an upgrade could grant `whatsappOptIn=1`, and the draft default was true. Current `LocalBusinessDatabase.onUpgrade` clears unprovable grants; customer/domain defaults are false and explicit choices store `whatsappOptInAt`. | Existing customers with real prior consent must reconfirm because the old schema cannot prove that choice. See section 25.1. The migration behavior was covered by synthetic tests documented in section 25.4; no production records were inspected. |
 | H4 | High recovery limitation | Confirmed scope | BackupService only exports business register; pricing DB/profile preferences/photos excluded; Android OS backup disabled | A register export is not complete disaster recovery. Document the boundary clearly and design comprehensive recovery if required. No data was lost or restored during this audit. |
 | M1 | Medium | Confirmed layering inconsistency | AccountingScreen, PurchaseOrdersScreen and legacy quotation creation execute SQL in presentation | UI, persistence and validation are coupled; repository injection does not cover all modules. Extract interfaces when changing these modules, with migration/compatibility tests. |
-| M2 | Medium–High on untrusted/large files | Confirmed limited validation; failure not reproduced | restoreFor validates envelope/account/table shapes and PDFs, then inserts most row values without full domain replay; pickAndRestore has no total file limit | Malformed user-selected data may fail later in screens/reports; memory exhaustion plausible. Add bounded input and comprehensive preflight validation in a future change. Existing transaction prevents partial replacement on SQL failure. |
+| M2 | Medium–High on untrusted/large files | Confirmed limited validation; failure not reproduced | `restoreFor` validates envelope/account/table shapes and archived PDFs, then inserts most row values without full domain replay. `pickAndRestore` now rejects empty and >64 MiB files, but export remains whole-file/in-memory and content validation is not a complete schema/domain validator. | Malformed user-selected data may be rejected by SQLite or fail later in screens/reports; transaction protects replacement from partial SQL failure. The input cap reduces, but does not eliminate, memory pressure. Full manifest/checksum and preflight validation remain future work. |
 | M3 | Medium | Confirmed stale-data behavior | Settings `_BackupExportState._restore` does not invalidate all providers and instructs reopening | Already loaded views may remain stale after restore. Implement/test coordinated reset only when changing behavior. |
-| M4 | Medium | Potential account-switch race | PurchaseDetailScreen._markPaid captures uid before confirmation without rechecking; _returnItems reads current uid after dialog holding old purchase; backup flow similarly retains captured uid across picker/confirmation | A delayed action may target an old workspace or combine old UI with current uid. Many other screens use stronger generation guards. Add focused account-switch tests before asserting an exploit or patching. |
+| M4 | Medium | Residual account-switch coverage gap | Purchase detail now captures UID before supplier-payment/return dialogs and rechecks it before the write. Backup restore checks that Settings still has the captured UID after file selection/read and before restore. Other mutation flows do not all share a common workspace-generation guard; in-flight database calls are not generally cancellable. | The two corrected flows avoid starting when a dialog/picker completed under a different active workspace. Audit other delayed confirmations and add focused account-switch tests. Do not claim repository-wide race freedom. |
 | M5 | Medium | Confirmed representation | Money/items/payments are JSON in business rows; few SQL CHECK/FK constraints | DB queries cannot cheaply index embedded totals or enforce all relationships. Keep domain validation and typed decoders aligned, especially backup ingestion. |
 | M6 | Medium | Confirmed maintainability | settings_screen.dart 1,147 lines; sale_editor_screen.dart 1,013; sale_detail_screen.dart 949; other large pricing forms | Broad responsibilities increase change risk. Split only along tested boundaries; line count alone is not a functional bug. |
 | M7 | Medium | Confirmed parallel implementations | Legacy PricingEngine/LocalRateCardRepository and universal engine; legacy/native photo channel plus new crop flow; local and inactive cloud profile adapters | Similar names and outdated comments can misdirect development. Document active wiring and preserve compatibility rather than deleting blindly. |
@@ -4526,14 +4535,14 @@ No unused dependency removal, bug fix, refactor, schema migration or security re
 
 ## 16.1 Existing tests
 
-There are 71 authored Dart test/support source files and two Kotlin JUnit test files in the inspected tree. File count is not a count of executed tests. Most database “integration” tests are host-side real SQLite FFI repository tests; there is no discovered Flutter `integration_test/` device automation project.
+There are 73 authored Dart test/support source files and two Kotlin JUnit test files in the current tree. File count is not a count of executed tests. Most database “integration” tests are host-side real SQLite FFI repository tests; there is no discovered Flutter `integration_test/` device automation project.
 
 | Area | Actual tests / fixtures | What they establish in code |
 |---|---|---|
 | Exact/unit/strategy math | pricing_values_test.dart, pricing_engine_test.dart, universal_pricing_test.dart, universal_units_inputs_test.dart, pricing_formula_test.dart | Rounding, units, expression safety and strategy behavior on synthetic inputs. |
 | Pricing persistence | pricing_repository_test.dart, universal_repository_test.dart, workspace_persistence_test.dart, fixtures/pricing_schema_v1.sql–v3.sql | Publication, migrations, scope, immutability and persistence. |
 | Calculator/estimate setup | product_setup_test.dart, calculator_session_test.dart, estimate_builder_test.dart, estimate_checkout_flow_test.dart, varieties tests | Persistent draft/snapshot/checkout and variety/customer-rate semantics. |
-| Local business transactions | business/local_business_data_test.dart, sales_customer_storage_test.dart, customer_migration_test.dart, quickprice_sale_storage_test.dart | Oversell prevention, rollback, customer linking, snapshots and backup contracts. |
+| Local business transactions | business/local_business_data_test.dart, sales_customer_storage_test.dart, customer_migration_test.dart, quickprice_sale_storage_test.dart, backup_service_test.dart | Oversell prevention, rollback, customer linking/consent, snapshots and backup input size bounds. |
 | Sales refinements/deletion | business/sales_refinement_test.dart, bill_deletion_test.dart, sales_screen_test.dart, sales_refinement_ui_test.dart | Search, contact deadlines, deletion/retry/stock/report consistency, account change and widget behavior. |
 | PDF/images | bill_pdf_service_test.dart, bill_document_storage_test.dart, quotation_documents_test.dart, report_pdf_refinement_test.dart, image_editor_test.dart, profile_media_flow_test.dart | Bytes/layout fixtures/encoding bounds, quotation isolation and pixel/form persistence checks. Hardware printing is a separate boundary. |
 | Routing/session/UI | app_navigation_test.dart, session_controller_test.dart, routing_and_profile_test.dart, business_ui_regressions_test.dart, inventory_screen_test.dart | Auth gating, error/retry, forms, accessibility-sized layouts and lifecycle cases. |
@@ -4586,7 +4595,7 @@ The current release signs with a development certificate. No Play deployment pip
 
 There are no implemented server TODOs hidden behind invented endpoints. Some advanced legacy PricingEngine branches throw UnsupportedError; the current universal engine is a different implementation and supports the ten StrategyKind values. Open-workspace web code intentionally returns a preview; the UnsupportedError in openLocalPricingDatabase on web is an explicit boundary, not an accidental production cloud connection.
 
-Suggested priorities, tied to existing boundaries rather than new product requirements: verify cloud access rules and release-signing/recovery policy; review consent migration and account-switch guards; make backup scope unmistakable and validate restored rows/size; add focused device tests for file/PDF/payment handoffs; clarify register-versus-accounting semantics; then address large-history pagination/report memory and split oversized files only behind regression coverage. No new business requirement is assumed by this ordering.
+Suggested priorities, tied to existing boundaries rather than new product requirements: verify cloud access rules and release-signing/recovery policy; test consent reconfirmation and audit remaining account-switch guards; complete backup coverage and recovery validation; add focused device tests for file/PDF/payment handoffs; clarify register-versus-accounting semantics; then address large-history pagination/report memory and split oversized files only behind regression coverage. No new business requirement is assumed by this ordering.
 
 # 18. How to continue developing this app
 
@@ -4623,7 +4632,7 @@ For schema work, add an explicit migration from every supported older version, u
 
 # 19. AI agent handoff context
 
-**Project:** Hyner 0.8.1+13, offline-first merchant app plus universal measured-product pricing. Dart/Flutter + Riverpod + go_router; Kotlin Android bridges; sqflite register schema 12; Drift pricing schema 4; Firebase Auth optional; SharedPreferences local profile/theme/mode. No custom backend server or business cloud sync.
+**Project:** Hyner 0.8.4+16, offline-first merchant app plus configurable measured-product pricing. Dart/Flutter + Riverpod + go_router; Kotlin Android bridges; sqflite register schema 13; Drift pricing schema 4; Firebase Auth optional; SharedPreferences local profile/theme/mode. No custom backend server or business cloud sync.
 
 **Active start:** lib/main.dart → HynerLauncher → bootstrap → AppDependencies → app/hyner_app.dart → router. The other HynerApp in main.dart is not the active business root. Business repositories are local; Firestore adapter presence does not make bills cloud-backed. Account and device records use different local files; pricing is separate from register. Native Android is the delivered platform; web pricing is an in-memory preview; other runners absent.
 
@@ -4633,7 +4642,7 @@ For schema work, add an explicit migration from every supported older version, u
 
 **Cross-module dependencies:** sales changes affect inventory, customer history, reports, reminders, PDFs and backup. Purchases affect stock/cost valuation/reports. Pricing serialization affects published versions, estimates, quotations and custom sale totals. Settings affect all document layouts and UPI QR. Restore affects every business provider. Sign-out does not delete local data. Pricing permissions are client guards with full local-owner grants, not staff authorization.
 
-**Special care:** avoid confusing database schema 12 with backup schema 10/envelope 2; no full app backup currently; debug release signing; absent cloud rules evidence; WhatsApp consent migration; account-switch gaps in purchase/backup handlers; JSON-heavy scans and unbounded large-report/backup memory. There is no established full bill edit, credit-note/refund system, staff manager or central sync API to extend casually.
+**Special care:** avoid confusing register schema 13, backup schema 11 and envelope version 2; backup remains register-only despite the 64 MiB restore-input cap; debug release signing; absent cloud rules evidence; legacy customers may need consent reconfirmation; account-switch checks are partial; JSON-heavy scans and unbounded large-report/export memory. There is no established full bill edit, credit-note/refund system, staff manager or central sync API to extend casually.
 
 **Efficient lookup examples:**
 
@@ -4715,15 +4724,19 @@ No unreadable relevant authored source directory was encountered. Platform runne
 | Claim | Exact supporting location |
 |---|---|
 | Active startup and injected services | `lib/main.dart:16` |
-| Local repository bootstrap | `lib/app/bootstrap/bootstrap.dart:43` |
+| Local repository bootstrap | `lib/app/bootstrap/bootstrap.dart:44` |
 | Session route gates / public QuickPrice | `lib/app/routing/app_router.dart:35` |
 | Local identity selection | `lib/features/auth/data/device_access_repository.dart:18` |
 | Firebase auth operations | `lib/features/auth/data/firebase_auth_repository.dart:7` |
 | Local profile persistence active adapter | `lib/features/profile/data/local_profile_repository.dart:7` |
-| Business file scope/schema | `lib/core/storage/local_business_database.dart:45` |
-| Register export | `lib/core/storage/local_business_database.dart:252` |
-| Register restore validation | `lib/core/storage/local_business_database.dart:292` |
-| Consent-changing migration | `lib/core/storage/local_business_database.dart:240` |
+| Business file scope/schema | `lib/core/storage/local_business_database.dart:45` (database opens at v13) |
+| Register export | `lib/core/storage/local_business_database.dart:268` |
+| Register restore validation | `lib/core/storage/local_business_database.dart:308` |
+| Consent-changing migration (register schema v13) | `lib/core/storage/local_business_database.dart:231` |
+| Explicit customer consent timestamp | `lib/features/customers/data/customer_rows.dart:11` |
+| Backup restore input size bound | `lib/core/storage/backup_service.dart:14` |
+| Backup workspace recheck before restore | `lib/core/storage/backup_service.dart:47` |
+| Purchase payment/return dialog workspace guards | `lib/features/purchases/presentation/purchase_detail_screen.dart:21`, `:73` |
 | Pricing schema version/guards | `lib/core/storage/pricing_database.dart:6` |
 | Native pricing filename scope | `lib/core/storage/open_pricing_database.dart:10` |
 | Local-owner pricing permission grant | `lib/features/pricing/data/device_workspace.dart:66` |
@@ -4757,7 +4770,7 @@ No unreadable relevant authored source directory was encountered. Platform runne
 | Build verification tooling | `tool/check_android_artifacts.py:53` |
 | Opt-in profiling only | `lib/core/performance/performance_recorder.dart:13` |
 
-For reproducible comparison, the SHA-256 of sorted authored Dart paths plus contents (excluding `.g.dart`) at audit time is `ed016c4238daef02f31277d0f1dd4e6adb69c47ea57700f4df36966164a443fb`. This is a source fingerprint, not a signing secret or proof of runtime correctness. Branch `test1`, HEAD `256b79a661944b29e7f82605899b86cb692a87d6`; existing local modifications mean a clean checkout of HEAD differs from the audited application. Documentation generated **2026-11-13 (Asia/Kolkata)**.
+Historical original-audit source fingerprint: SHA-256 of sorted authored Dart paths plus contents (excluding `.g.dart`) was `ed016c4238daef02f31277d0f1dd4e6adb69c47ea57700f4df36966164a443fb`. This is a source fingerprint, not a signing secret or proof of runtime correctness. It describes the original branch `test1`, HEAD `256b79a661944b29e7f82605899b86cb692a87d6`, not current HEAD. Current snapshot metadata and verification are in section 26.
 
 **Original read-only audit completion verification (before 0.8.2 UI work):** SHA-256 fingerprints for all 326 pre-existing inventoried source/configuration/document/asset/test files matched the pre-audit baseline; no other relevant inventoried file was created, removed or modified. The new master document is the sole permitted difference. This confirms pre-existing uncommitted application changes were preserved. Generated/ignored caches were not executed or rewritten by this audit. Documentation checks confirmed all 21 numbered sections, 33 declared routes, 36 local table definitions, 154 authored Dart file entries, balanced Markdown fences and zero matches for checked secret/token/credential patterns. Mermaid syntax was reviewed as text; no renderer was installed or executed.
 
@@ -4768,8 +4781,8 @@ For reproducible comparison, the SHA-256 of sorted authored Dart paths plus cont
 - Generated `pricing_database.g.dart` was recognized as Drift output; the authoritative source schema and migration code were inspected instead of treating generated accessors as independent business logic. Build outputs/caches/plugin registrants were excluded from the file-by-file authored-code reference. Existing release log summaries were read as historical evidence only.
 - Binary artwork/font/PDF fixtures and UX screenshot filenames were inventoried; they were not all visually re-rendered. Vendored SQLite source/header were identified and provenance read; no line-by-line upstream C security audit or remote authenticity verification was performed.
 - No custom server/security-rules/CI sources were found; that means they are absent from this checkout, not necessarily absent from every external system. Deployed Firebase configuration, provider policies, quotas and cloud data remain Not verified.
-- No tests, analyzer, build, dependency install, migration, formatting command, image/PDF render or executable device benchmark was run during this audit. Read-only source inspection cannot certify runtime correctness, performance or exploitability.
-- Static regex/import references help navigation but do not constitute a full Dart call graph or prove dynamic/widget/platform nonuse. Major feature paths were traced manually. Current working-tree changes are included; HEAD alone does not reproduce them.
+- During the original 2026-11-13 source audit, no tests, analyzer, build, dependency install, migration, formatting command, image/PDF render or executable device benchmark was run. The later implementation checks described in sections 22 and 25 are separate historical evidence. The current 2026-11-14 documentation recheck did not rerun tests; read-only source inspection cannot certify runtime correctness, performance or exploitability.
+- Static regex/import references help navigation but do not constitute a full Dart call graph or prove dynamic/widget/platform nonuse. Major feature paths were traced manually. The original 2026-11-13 audit covered then-existing working-tree changes. The 2026-11-14 snapshot metadata refers to committed HEAD `ee06c23` and was clean before this documentation update.
 - Source line numbers describe this snapshot and will drift after edits. Recheck the current file before making a change. Regenerate/update this documentation when schemas, routes, dependency wiring or invariants change.
 
 **Documentation location:** `docs/APP_MASTER_DOCUMENTATION.md` — the sole document created by the original audit; later authorized UI implementation changes are listed in section 22. It can be shared as one standalone handoff document; recipients still need the current repository to implement or independently verify changes.
@@ -4977,7 +4990,7 @@ Verifier reports: `build/optimization/artifacts-calculator-actions-split.json` a
 
 # 25. MVP reliability implementation update (2026-11-14)
 
-This section records two scoped safety changes from the Hyner MVP completion work. It does not claim the requested MVP is complete; see [HYNER_MVP_COMPLETION_REPORT.md](HYNER_MVP_COMPLETION_REPORT.md) for the feature gap matrix, tests, limits and release decision.
+This section records three scoped safety changes from the Hyner MVP implementation commit. It does not claim the requested MVP is complete; see [HYNER_MVP_COMPLETION_REPORT.md](HYNER_MVP_COMPLETION_REPORT.md) for the feature gap matrix, tests, limits and release decision. That companion report is existing repository documentation; this read-only audit updates only this master document.
 
 ## 25.1 Customer marketing consent
 
@@ -5000,3 +5013,188 @@ Supplier payment and purchase-return confirmation handlers in `lib/features/purc
 `flutter analyze --no-pub` reported no issues. Focused customer migration/storage, backup size-bound, and business UI/data tests passed. The final full test suite passed (**761 passed, 4 skipped, 0 failed**). The profile media test that failed during an earlier full-suite run passed when run alone; its isolated run logged a handled missing `printingInfo` plugin warning. No production data was used.
 
 These changes do not close the MVP gaps in complete dual-database backup/restore, customer returns/refunds, traceable bill corrections, dated payment ledger and collection reporting, measured-product inventory mapping, supplier financial reconciliation, full account-switch testing, or physical Android release verification. The release recommendation remains **NO-GO for real-business production use** until those blockers are addressed.
+
+# 26. Current repository re-verification (2026-11-14)
+
+This section corrects the 2026-11-13 snapshot metadata and findings that changed in the current repository. Sections 1–21 remain the detailed architecture, screen, schema, workflow, capacity, security, test and file-impact guide. This recheck inspected current startup/dependency wiring, routes, local database migrations, pricing schema, backup/restore code and the committed change set. The application files in the committed change set were also traced in the preceding MVP implementation task. This audit pass changed documentation only.
+
+## 26.1 Current snapshot identity
+
+| Item | Verified current value |
+|---|---|
+| Date and timezone | 2026-11-14, Asia/Kolkata |
+| Working directory | `/Users/akash/hyner2` |
+| Branch / commit | `test2` / `ee06c23` (`new feactures are implemented`) |
+| App version | `0.8.4+16` from `pubspec.yaml` |
+| Register database schema | v13: `LocalBusinessDatabase` in `lib/core/storage/local_business_database.dart` |
+| Pricing database schema | Drift v4: `PricingDatabase` in `lib/core/storage/pricing_database.dart` |
+| Backup envelope / snapshot | Envelope version 2; exported register snapshot schema 11. The 64 MiB limit applies to selected restore input only. |
+| Git state before this documentation edit | Clean. This recheck changes only `docs/APP_MASTER_DOCUMENTATION.md`. |
+
+The original audit fingerprint/branch/commit in section 21 describe the 2026-11-13 audit and are not a current source fingerprint. No new source fingerprint was calculated in this documentation-only recheck.
+
+## 26.2 Corrections to earlier snapshot statements
+
+- **Customer schema and consent:** the current `customers` table has `whatsappOptIn INTEGER NOT NULL DEFAULT 0` and nullable `whatsappOptInAt TEXT`. `Customer` and `CustomerDraft` default false. The v13 migration resets old opt-ins because the previous schema cannot prove that a true value was an explicit customer choice. This preserves customer rows but asks previous opted-in customers to confirm again. Evidence: `lib/core/storage/local_business_database.dart:52, 103–104, 231–247`; `lib/features/customers/domain/customer.dart:4–25, 56–70`; `lib/features/customers/data/customer_rows.dart:11–17, 72–98`; `lib/features/customers/presentation/customers_screen.dart:190–257`.
+- **Backup restore bounds:** `BackupService.pickAndRestore` requests a file path without loading bytes through the picker, checks the reported and read size against 64 MiB, then rechecks the selected workspace before calling the existing restore. `LocalBusinessDatabase.restoreFor` still restores only the register database. Backup omits the separate pricing database, profile/theme preferences and profile image files; export remains a full in-memory JSON operation and has no matching maximum-size guard. There is no checksum/manifest validation or staged rollback across stores. Evidence: `lib/core/storage/backup_service.dart:14–73`; `lib/features/settings/presentation/settings_screen.dart:243–287`; `lib/core/storage/local_business_database.dart:268–420`.
+- **Supplier dialog workspace binding:** supplier payment and purchase return handlers capture the UID before opening the dialog and check it again before starting the write. They check again after the repository call before refreshing. This does not establish race freedom for every application mutation or cancel a database write already in progress. Evidence: `lib/features/purchases/presentation/purchase_detail_screen.dart:21–111`.
+- **Current release readiness:** an application version or passing Flutter suite does not establish production readiness. The separate pricing DB is not in backup, customer sale returns/refunds are absent, finalized bill corrections lack a full void/reissue audit workflow, collection reports are not a dated payment ledger, and measured QuickPrice items remain price-only unless represented by tracked inventory lines. Production signing still uses the debug signing configuration per `android/app/build.gradle.kts`; deployed Firestore rules were not found in this repository.
+
+The corresponding historical findings H3, M2, and M4 in section 15 have been updated to distinguish the corrected consent behavior and partial input/workspace safeguards from unresolved coverage.
+
+## 26.3 Verification performed for this documentation update
+
+- Read-only source inspection only. No test, analyzer, build, package install, migration, production database access, cloud-console access or device action was run during this documentation update.
+- The preceding implementation task recorded `flutter analyze --no-pub` clean and a full Flutter suite result of 761 passed, 4 skipped, 0 failed. That result is previous execution evidence documented in section 25; it was not rerun as part of this audit.
+- Relevant source claims were cross-checked against current `lib/main.dart`, `lib/app/bootstrap/bootstrap.dart`, `lib/app/bootstrap/app_dependencies.dart`, `lib/app/routing/app_router.dart`, `lib/core/storage/local_business_database.dart`, `lib/core/storage/pricing_database.dart`, `lib/core/storage/pricing.drift`, `lib/core/storage/backup_service.dart`, customer model/row/UI files, and purchase detail UI.
+- `docs/HYNER_MVP_COMPLETION_REPORT.md` exists in the repository. This audit did not update or create it; the only requested output remains this master document.
+
+## 26.4 Remaining verification limits
+
+No merchant records, production/local business databases, Firebase user records, provider console or credentials were accessed. Current row counts and database sizes remain unknown. Actual Firebase rules, indexes and provider quotas remain not verified. Physical Android file-picker, file sharing, printing, WhatsApp, UPI and release-update behavior were not tested. No iOS project or desktop runner is present in the current file inventory; the web business register is not established as durable/supported. These remain source/repository limitations, not conclusions about external deployments.
+
+**Current documentation location:** `docs/APP_MASTER_DOCUMENTATION.md`. This is the only file modified during the current read-only audit. Application source was not modified during this audit; source changes already present in commit `ee06c23` predate this audit task.
+
+## 27. UI/UX redesign update (2026-11-14)
+
+This section records presentation changes made after the earlier source and business-readiness documentation. It supersedes older navigation and screen-layout descriptions where they differ. Business calculations, database schemas, authentication, authorization, and repository implementations were not changed.
+
+### 27.1 Workspace navigation
+
+- `lib/features/workspace/presentation/workspace_shell.dart` now exposes the mobile primary destinations **Home**, **Price**, **Bill**, **Stock**, and **More**. Tablet and desktop widths continue to use the existing side navigation.
+- **More** groups available destinations under Business, Insights, Communication, and Preferences. It retains bill history, customers, purchases, expenses, quotations, purchase orders, accounting, reports, pending payments, WhatsApp updates, Settings, and Profile.
+- `/quickprice` remains public under `sessionRedirect` in `lib/app/routing/app_router.dart`; it now receives the workspace navigation shell while keeping its own calculator app bar.
+- The `/sales` bill editor hides persistent navigation while the user is composing a bill. The shell provides a guarded Back control and a Saved bills shortcut. Existing `SaleEditorScreen` discard handling remains responsible for unsaved changes.
+
+### 27.2 Home dashboard
+
+`lib/features/dashboard/presentation/dashboard_screen.dart` now prioritizes:
+
+1. Greeting and device-workspace context, where applicable.
+2. Today’s billed sales, read from the today report period.
+3. Current outstanding dues, read from the all-time report; this is not presented as cash received.
+4. New bill and Quick price actions.
+5. Attention links for low-stock products in the currently loaded inventory page and outstanding customer bills.
+6. Up to three recent bills with customer, amount, payment state, and detail navigation, plus View all.
+7. A Reports shortcut and an expandable business summary for prior earnings/activity charts.
+
+The low-stock notice checks the inventory page already loaded by the existing controller; it does not scan all pages from Home. A complete low-stock count across a large inventory is therefore not claimed.
+
+### 27.3 Feature presentation changes
+
+- `lib/features/pricing/presentation/quickprice_screen.dart`: the estimate shortcut remains visible; calculator setup, rate editing, saved quotations, and workspace information are grouped under Calculator options. Existing calculator strategies, reactive calculation, rate editing, and estimate persistence are unchanged.
+- `lib/features/sales/presentation/sale_editor_screen.dart`: the existing product, customer, and payment sequence has clearer numbered section headings. Validation, pricing, stock deduction, payment requests, retry identity, and save behavior are unchanged.
+- `lib/features/sales/presentation/sale_detail_screen.dart`: the bill reference, payment status, bill total, received amount, remaining amount, and customer details are presented in a clearer order. Existing payment confirmation, PDF, print, WhatsApp, contact edit, delete, and follow-up actions remain wired to their existing implementations.
+- `lib/features/inventory/presentation/inventory_screen.dart`: active inventory is labeled All, rows use dividers instead of separate outlined containers, and existing stock, price, low-stock state, SKU, and category remain visible. The repository still does not expose a low-stock query filter; no partial client-side filter was added.
+- `lib/features/customers/presentation/customers_screen.dart`: directory rows show the customer name and a short contact/ID subtitle. Full details, consent controls, notes, and bill history remain on customer detail.
+- `lib/features/settings/presentation/settings_screen.dart`: Business, Appearance, and Data & device headings organize existing controls. Four theme presets and System/Light/Dark mode remain separate settings.
+- Reports, quotations, purchase, expense, profile, PDF-template, and business-data operations continue to use their existing screens and services; this UI pass did not alter their data behavior.
+
+### 27.4 Shared UI and visual system
+
+The redesign reuses the existing `PageContent`, `SliverPageContent`, `FinancialAmount`, `RecordFact`, `DisclosureSection`, `ResponsivePair`, `InlineNotice`, theme presets, and semantic theme colors. Home adds private presentational widgets for financial figures, recent bill rows, attention rows, empty state, and retry state. No third-party packages or database changes were added. Financial values still use the pre-existing formatting and calculation utilities.
+
+### 27.5 Verification and limits
+
+After the UI changes, `flutter analyze` passed. Focused widget/regression tests passed for application navigation, Home layout at narrow widths and large text, billing and discard behavior, inventory, QuickPrice/rates, quotations, themes, and bill settings. See `docs/HYNER_UI_UX_REDESIGN_REPORT.md` for the exact test command and screen statuses. Physical Android device checks were not run. Screenshot capture was not run because `HYNER_TEST_FONT_DIR` is not configured in this environment; widget layout assertions are available, but no screenshot artifact is claimed.
+
+**Latest source evidence:** `lib/app/routing/app_router.dart`, `lib/features/workspace/presentation/workspace_shell.dart`, `lib/features/dashboard/presentation/dashboard_screen.dart`, and the presentation files listed in sections 27.1–27.3. The historical commit fingerprint in section 21 does not describe these later uncommitted UI changes.
+
+## 28. QuickPrice inventory tracking and daily business summary (2026-11-14)
+
+This follow-up adds an explicit bridge from simple QuickPrice calculator products to local inventory. It does not convert measured dimensions into stock units and does not change QuickPrice formulas or published price snapshots.
+
+### 28.1 Calculator setup and inventory linking
+
+- `lib/features/pricing/presentation/simple_calculator_screen.dart` adds an **Inventory and costs** section for each simple calculator product. Inventory tracking is enabled by default for newly configured simple-rate products. The merchant can opt out.
+- Initial tracked stock defaults to 50 and the low-stock/reorder threshold defaults to 5. Both are editable. Purchase cost and standard inventory selling price are editable in the same section; they are separate from the calculator's configured selling-rate formula.
+- Saving a tracked calculator creates an inventory product using the existing inventory repository and existing `products` storage. The generated SKU is recorded as optional `inventorySku` on `UniversalProduct` in `lib/features/pricing/domain/universal/rate_card.dart`. There is no SQL schema migration.
+- Before creating a new product, the setup searches existing inventory by normalized exact name (trimmed, whitespace-collapsed, case-insensitive). A single active match is linked and its existing stock and prices are preserved. Duplicate active matches, an archived match, or a currency mismatch stop the save with a review message. This avoids silently creating a second same-name catalogue item. It does not merge products or resolve fuzzy/near-name matches.
+- This linking applies to the simple calculator setup screen. Other rate-card authoring flows are not claimed to create inventory automatically. Existing unlinked simple calculator products acquire inventory tracking when opened and saved through this setup; there is no bulk backfill.
+- For multiple varieties under one simple calculator product, all varieties link to that one inventory record. This tracks the configured product's bill quantity as units. It does not distinguish stock by variety or derive physical consumption from square feet, height, width, or another measured unit.
+
+### 28.2 Bill stock and saved costs
+
+- `lib/features/pricing/application/estimate_builder.dart` carries an optional inventory SKU from a QuickPrice estimate line into its sale line.
+- `lib/features/sales/domain/sale.dart`, `lib/features/sales/data/local_sales_repository.dart`, and `lib/features/sales/data/sale_codec.dart` preserve the link in the sale snapshot and use the linked SKU for existing transactional stock checks, deduction, and reversal behavior. A QuickPrice line without a link remains price-only. The sales editor prevents adding the same linked inventory item a second time as a manual line in the same checkout.
+- At sale commit, linked inventory cost is snapshotted from the current inventory item's unit cost. If cost is zero/unknown, reports do not manufacture a profit number from it.
+- `lib/features/reports/data/local_reports_repository.dart` includes linked QuickPrice stock lines with a known cost in cost-of-goods and gross-profit calculations. These are gross amounts before operating expenses, not complete net income or cash collections.
+- `lib/features/dashboard/presentation/dashboard_screen.dart` displays today’s billed sales, cost of items sold, gross profit before expenses, and outstanding dues. “Billed sales” are sales recorded by sale date; they are not equivalent to payments received. Outstanding dues come from the all-time report balance.
+
+### 28.3 Verification and limitations
+
+No SQL tables, columns, migration, external package, or server API were added. Setup preferences and inventory links use existing pricing-value storage and product storage. `flutter analyze` completed without issues. A focused suite of 64 tests passed across QuickPrice persistence, reports, estimate conversion, setup/linking defaults, Home responsive layout, bill deletion/reversal, and checkout behavior. The tests use synthetic/local fixtures; no production records or live Firebase data were accessed. A non-failing Drift warning in `test/estimate_builder_test.dart` reports multiple `PricingDatabase` instances in one test executor.
+
+Exact-name linking can require scanning multiple inventory pages when many products share the same name prefix. Inventory quantities represent explicit bill quantity only; measured-to-stock conversions are deliberately unsupported. Android device installation, physical billing, and sign-in were not verified by these automated tests. Source evidence: `lib/features/pricing/presentation/simple_calculator_screen.dart`, `lib/features/pricing/application/product_setup.dart`, `lib/features/pricing/domain/universal/rate_card.dart`, `lib/features/pricing/application/estimate_builder.dart`, `lib/features/sales/domain/sale.dart`, `lib/features/sales/data/local_sales_repository.dart`, `lib/features/sales/data/sale_codec.dart`, `lib/features/reports/data/local_reports_repository.dart`, and `lib/features/dashboard/presentation/dashboard_screen.dart`.
+
+## 29. First-time guide, PDF naming and Play readiness continuation (2026-11-14)
+
+This continuation adds a workspace-aware first-use guide, direct task Help, and readable PDF filename handling. It does not replace the existing theme engine, authentication behavior, business schemas, sales rules, or financial calculations.
+
+### 29.1 First-time guide and task Help
+
+- `lib/features/onboarding/data/onboarding_preferences.dart` stores only workspace-keyed guide progress and completion in SharedPreferences.
+- `firstTimeGuideProvider` in `lib/features/onboarding/presentation/first_time_user_guide_screen.dart` suppresses the first-use prompt when the guide is complete or the checked local business tables already contain records. Empty workspaces see an optional Home prompt. Existing workspaces are not treated as new merely because the guide was introduced.
+- `/getting-started` presents links to existing business settings, product creation, QuickPrice, sales, and backup/settings. Steps can be marked manually, skipped, or completed; the guide creates no merchant records.
+- `lib/features/onboarding/presentation/help_screen.dart` adds searchable links for changing shop details/bill appearance/product price/theme/calculator rates, adjusting stock, renaming calculators, downloading bills, recording payments, and creating backups. Destinations are existing routes; the screen does not fabricate per-record edit functions.
+- `/help` and `/getting-started` are wired in `lib/app/routing/app_router.dart`; More and Settings expose Help/tour entry points. Welcome copy is shorter and direct.
+- Anchored contextual coach marks and automatic detection of completed setup actions are **not implemented**. The guide feature is therefore partial relative to the requested full tutoring experience.
+
+### 29.2 Bill and quotation PDF filenames
+
+`lib/features/sales/data/bill_pdf_filename.dart` centralizes the customer-oriented bill filename, safe character handling, valid mobile normalization, short reference fallback, duplicate suffix, optional workspace-scoped mobile preference, and a separate quotation convention. `sale_detail_screen.dart` passes the generated bill filename to save, duplicate save, share/WhatsApp, and print. `quotation_screen.dart` uses `Quotation_CustomerName_shortReference.pdf`. `android/.../PdfFilename.kt` validates the native filename and PDF extension for Android file actions.
+
+The filename preference does not change archived PDF bytes, internal IDs, sale snapshots, payment or inventory data. It defaults to including a valid customer phone as requested; Settings offers an opt-out because the number may be visible to recipients in a shared file name. Real Android save picker, share sheet, print provider and WhatsApp behavior were not exercised in this pass; helper unit tests do not prove device behavior.
+
+### 29.3 Verification in this continuation
+
+- `flutter analyze --no-pub`: passed with no issues.
+- Focused Flutter tests for PDF names, onboarding state and prompt, app navigation, dashboard/inventory layout, and existing UX tests: 47 passed, 1 skipped, 0 failed in the final run.
+- `./gradlew :app:testDebugUnitTest --no-daemon` in `android/`: passed, 8 Android unit tests. Gradle/Kotlin and notification API deprecation warnings were present.
+- `python3 tool/build_android.py --format split --no-pub --label premium-ui`: produced verified per-ABI APKs at `build/app/outputs/flutter-apk/hyner-0.8.4-premium-ui-{armeabi-v7a,arm64-v8a,x86_64}.apk` with SHA-256 sidecars. The arm64 artifact is 28.3 MB, package/version metadata is `com.hyner.hyner`, `0.8.4` / `16`, target SDK 36 and minimum SDK 24. `apksigner verify` succeeded. These APKs are debug-signed sideload test artifacts, not Play-ready builds; no device install was run. The matching AAB target was not verified because no bundle was built.
+- Physical device screenshots, TalkBack, Android file-picker, printing, and share-target checks were not run.
+- The working tree was already staged/dirty when this continuation began. It remains uncommitted and includes earlier work. No reset, checkout, or destructive cleanup was performed. Branch `test2`, HEAD `ee06c23` is the base reference, not a commit containing the current modifications.
+
+### 29.4 Play release assessment
+
+`android/app/build.gradle.kts` uses `flutter.targetSdkVersion` and `flutter.minSdkVersion`; this repository file does not pin their numeric values. It configures the release build to use the debug signing configuration. No production Play App Bundle, privacy policy URL, in-app privacy link, or account-deletion flow was verified. Therefore the current source is **not ready for public Play release**. The detailed checklist and official links are in `docs/HYNER_STORE_RELEASE_CHECKLIST.md`.
+
+The official current Google Play target policy requires API 36 for new apps and updates from 2026-08-31. The release candidate AAB must be inspected to verify its actual target API. Android 16 insets, predictive/system back, permissions, data handling, app access instructions, content rating, Data Safety, account deletion, production signing, and account-specific testing requirements remain release gates. Do not claim API 36 compliance or Play acceptance solely from Flutter compilation.
+
+Additional deliverables:
+
+- `docs/HYNER_PREMIUM_UI_UX_REPORT.md` records this UX slice, file list, verification and limitations.
+- `docs/HYNER_FIRST_TIME_USER_GUIDE.md` documents the actual guide and Help destinations.
+- `docs/HYNER_STORE_RELEASE_CHECKLIST.md` records PASSED / FAILED / NOT VERIFIED checks and a truthful listing draft.
+
+**Current repository status correction:** section 26's “clean at the commit above” described the earlier documentation-only snapshot, not the repository after implementation work. At this continuation the current tree is dirty and includes staged/unstaged changes from multiple prior tasks. The source fingerprint remains `test2` / `ee06c23` only as the base. Do not treat that commit as containing these changes.
+
+## 30. Advanced calculator to Inventory linking (2026-11-14)
+
+This follow-up extends calculator-to-stock integration beyond the simple calculator covered in section 28. It uses an additive `inventorySkuByRateId` map alongside the legacy `inventorySku` field on universal pricing products, existing Inventory tables/movements, and a retry-safe linker. No business database or pricing database schema migration was added.
+
+### 30.1 Future products
+
+`lib/features/pricing/presentation/product_setup_screen.dart` provides Inventory tracking fields while creating a product in the advanced rate-card editor. New tracking defaults are 100 opening units and reorder threshold 10. Each selectable base-rate variety becomes a separate Inventory product named with its calculator product and selected variety. The variety's selling rate supplies its Inventory selling price; purchase cost can be set per variety, with the product cost used when left blank. Products without varieties remain one Inventory product. Dimensions and measured quantities do not automatically convert to stock units.
+
+`RateCardEditor` creates/links every variety when saving an eligible tracked product, then stores each rate-ID-to-SKU association in the rate-card draft. `CalculatorInventoryLinker` builds deterministic SKU and operation identities from the calculator product and variety IDs. It verifies the active workspace around async work, reuses one exact-name Inventory match, rejects duplicate matches, archived matches, or currency conflicts, and preserves on-hand quantity when calculator details and rates are updated. Removing a calculator product does not delete the stock records. Simple QuickPrice setup uses the same linker. Checkout carries the selected rate's SKU into the saved bill so stock deduction targets that variety only.
+
+### 30.2 Earlier calculator products
+
+When Inventory opens, its controller scans active calculator drafts and links missing variety SKUs. Opening a calculator in the rate-card editor also retries this process. A legacy one-SKU calculator link is reused for its first variety; additional varieties are created with the configured default of **100 units**, and alert threshold 10. Existing matching active Inventory products are reused. Saved calculator selling rates and optional purchase costs populate each variety; when older setup metadata lacks a cost, an existing linked cost is retained or new items start with zero cost. Review the initial quantity against the real count before selling. A sync problem does not block Inventory loading; the screen shows a retry message. The automatic scan is limited to the local Inventory repository.
+
+The linker spans two local SQLite databases, so there is no shared transaction. Deterministic SKU/movement identity makes an interrupted retry find the first write rather than creating a second opening movement. If Inventory creation succeeds but pricing draft update fails, reopening the calculator retries the same identity. The published pricing snapshot is immutable: the updated draft must still pass the existing **Preview & publish** flow before future sales use the SKU and deduct stock. Existing invoices and published snapshots are not rewritten.
+
+### 30.3 Verification and limitations
+
+- Added `test/business/calculator_inventory_link_test.dart`: synthetic sqflite database tests for product/variety creation, per-variety selling and purchase prices, retry stock preservation, reuse of a same-name product, and rejecting a changed workspace. Estimate serialization and QuickPrice sale-storage tests verify that the selected SKU reaches checkout and only that variety's stock is deducted.
+- Updated `test/quotation_flow_test.dart` to assert the readable quotation filename convention.
+- `flutter analyze --no-pub`: passed.
+- Focused regression suite for inventory linking/screens, stock-backed sales, estimates, QuickPrice variants and UI, and Inventory rename filtering: 68 passed. `flutter analyze --no-pub` passed. A non-failing Drift test warning remains documented in the test output.
+- `python3 tool/build_android.py --format split --no-pub --label variety-inventory` completed. APKs: `build/app/outputs/flutter-apk/hyner-0.8.4-variety-inventory-arm64-v8a.apk` (28,317,911 bytes, SHA-256 `ec450340a3c04c1268809d41416d90f16947ffdd97ce2b01cf6a9258b2a57b85`), `...-armeabi-v7a.apk`, and `...-x86_64.apk`. The artifact manifest records package `com.hyner.hyner`, version `0.8.4` / code `16`; arm64 signature verification passed. These are debug-signed sideload builds, not Play releases. Physical Android notifications, installation, and actual store AAB flow remain untested.
+
+Evidence: `lib/features/pricing/application/calculator_inventory_link.dart`, `lib/features/pricing/application/product_setup.dart`, `lib/features/pricing/presentation/product_setup_screen.dart`, `lib/features/pricing/presentation/rate_cards_screen.dart`, `lib/features/pricing/application/estimate_builder.dart`, `lib/features/sales/data/local_sales_repository.dart`, `test/business/calculator_inventory_link_test.dart`, and `test/business/quickprice_sale_storage_test.dart`.
+
+### 30.4 Stock alert and Inventory edit visibility
+
+`lib/core/notifications/local_notification_service.dart` now labels a nonpositive count as “Out of stock” and requests immediate display for stock alerts after Inventory writes. Android permission and device delivery are required; automated repository tests do not establish that a physical device showed the notification. Renaming a product through `lib/features/inventory/presentation/product_editor_screen.dart` clears the stale name search before refreshing the list, preventing the updated product from vanishing merely because it no longer matches the old query. See `test/business/inventory_controller_test.dart`.

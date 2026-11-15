@@ -60,8 +60,11 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 val bytes = call.argument<ByteArray>("bytes")
-                val filename = call.argument<String>("filename").orEmpty()
-                    .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val filename = PdfFilename.sanitize(call.argument<String>("filename").orEmpty())
+                if (filename == null) {
+                    result.error("invalid-pdf", "A safe PDF filename is required.", null)
+                    return@setMethodCallHandler
+                }
                 if (bytes == null || bytes.size < 5 || bytes.size > 25 * 1024 * 1024 ||
                     !filename.endsWith(".pdf") || filename.length > 160 ||
                     !bytes.copyOfRange(0, 5).contentEquals("%PDF-".toByteArray())

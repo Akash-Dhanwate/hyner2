@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../core/errors/app_failure.dart';
 import '../domain/exact.dart';
 import '../domain/universal/rate_card.dart';
 import '../domain/universal/universal_pricing.dart';
@@ -7,6 +8,7 @@ import 'product_setup.dart';
 import 'simple_calculator.dart' show simpleVarietyField;
 
 String pricingError(Object error) => switch (error) {
+  AppFailure() => error.message,
   ArgumentError() => '${error.message}',
   FormatException() => error.message,
   StateError() => error.message,

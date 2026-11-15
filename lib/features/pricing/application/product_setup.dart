@@ -148,6 +148,12 @@ class ProductSetup {
       'schemaVersion': 1,
       'id': newPricingId(),
       'name': '',
+      'inventoryTracking': true,
+      'inventorySku': '',
+      'inventoryOpeningStock': '100',
+      'inventoryReorderLevel': '10',
+      'inventoryCost': '0.00',
+      'inventoryPrice': '0.00',
       'categoryId': '',
       'categoryName': '',
       'parentId': '',
@@ -516,6 +522,7 @@ class ProductSetup {
     return UniversalProduct(
       categoryId: text('categoryId').isEmpty ? id : text('categoryId'),
       name: name,
+      inventorySku: text('inventorySku').isEmpty ? null : text('inventorySku'),
       rule: UniversalPricingRule(
         businessId: businessId,
         productId: id,

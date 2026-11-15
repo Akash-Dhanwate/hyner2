@@ -21,6 +21,7 @@ import '../../../core/images/image_editor_screen.dart';
 import 'bill_template_selector.dart';
 import '../../../core/widgets/account_scope_guard.dart';
 import 'theme_preset_picker.dart';
+import '../../sales/data/bill_pdf_filename.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -38,6 +39,8 @@ class SettingsScreen extends ConsumerWidget {
           'Business records stay on this device. Use Business backup to export a portable copy before changing phones or clearing app data.',
         ),
         const SizedBox(height: 16),
+        const Eyebrow('Business'),
+        const SizedBox(height: 8),
         _UpiSettingsForm(key: ValueKey(ref.watch(inventoryUidProvider))),
         const SizedBox(height: 24),
         ListTile(
@@ -50,7 +53,10 @@ class SettingsScreen extends ConsumerWidget {
           onTap: () =>
               openWorkspacePage(GoRouter.of(context), '/bill-settings'),
         ),
+        _BillFilenamePreference(key: ValueKey(ref.watch(inventoryUidProvider))),
         const SizedBox(height: 24),
+        const Eyebrow('Appearance'),
+        const SizedBox(height: 8),
         const ThemePresetPicker(),
         const SizedBox(height: 20),
         DisclosureSection(
@@ -102,6 +108,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
           ],
         ),
+        const SizedBox(height: 20),
+        const Eyebrow('Data & device'),
+        const SizedBox(height: 8),
         DisclosureSection(
           title: 'Notifications',
           summary: 'Low-stock and activity alerts',
@@ -111,6 +120,22 @@ class SettingsScreen extends ConsumerWidget {
           title: 'Business backup',
           summary: 'Export or restore local records',
           children: [const _BackupExport()],
+        ),
+        const SizedBox(height: 24),
+        const Eyebrow('Help'),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.help_outline_rounded),
+          title: const Text('How do I...?'),
+          subtitle: const Text('Find where to change or manage things'),
+          onTap: () => openWorkspacePage(GoRouter.of(context), '/help'),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.directions_walk_outlined),
+          title: const Text('Take a tour'),
+          onTap: () =>
+              openWorkspacePage(GoRouter.of(context), '/getting-started'),
         ),
         const SizedBox(height: 24),
         const Divider(),
@@ -147,6 +172,82 @@ class SettingsScreen extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _BillFilenamePreference extends ConsumerStatefulWidget {
+  const _BillFilenamePreference({super.key});
+  @override
+  ConsumerState<_BillFilenamePreference> createState() =>
+      _BillFilenamePreferenceState();
+}
+
+class _BillFilenamePreferenceState
+    extends ConsumerState<_BillFilenamePreference> {
+  final _preferences = BillPdfFilenamePreferences();
+  bool _includeMobile = true;
+  bool _loading = true;
+  bool _saving = false;
+  String? _uid;
+
+  @override
+  void initState() {
+    super.initState();
+    _uid = ref.read(inventoryUidProvider);
+    if (_uid != null) unawaited(_load(_uid!));
+  }
+
+  Future<void> _load(String uid) async {
+    try {
+      final value = await _preferences.includeMobile(uid);
+      if (mounted && _uid == uid) {
+        setState(() {
+          _includeMobile = value;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted && _uid == uid) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save(bool value) async {
+    final uid = _uid;
+    if (_saving || uid == null) return;
+    final previous = _includeMobile;
+    setState(() {
+      _includeMobile = value;
+      _saving = true;
+    });
+    try {
+      await _preferences.setIncludeMobile(uid, value);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _includeMobile = previous);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Filename preference could not be saved.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+    contentPadding: EdgeInsets.zero,
+    title: const Text('Include customer mobile in bill filenames'),
+    subtitle: const Text('Shared PDFs may show this number in the filename.'),
+    value: _includeMobile,
+    onChanged: _uid == null || _loading || _saving ? null : _save,
+    secondary: _loading || _saving
+        ? const SizedBox.square(
+            dimension: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.badge_outlined),
+  );
 }
 
 class BillAppearanceScreen extends ConsumerWidget {

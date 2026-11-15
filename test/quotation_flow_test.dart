@@ -11,7 +11,7 @@ import 'package:hyner/app/hyner_app.dart';
 import 'package:hyner/app/routing/app_router.dart';
 import 'package:hyner/features/pricing/application/estimate_builder.dart';
 import 'package:hyner/features/pricing/presentation/estimate_screen.dart';
-import 'package:hyner/features/pricing/presentation/workspace_quickprice_screen.dart';
+import 'package:hyner/features/pricing/application/pricing_workspace_provider.dart';
 import 'package:hyner/features/quotations/data/local_quotation_repository.dart';
 import 'package:hyner/features/quotations/domain/quotation.dart';
 import 'package:hyner/features/quotations/presentation/quotation_controller.dart';
@@ -225,7 +225,11 @@ void main() {
         'shareWhatsApp',
       ]);
       expect(calls.last.arguments['phone'], '9876543210');
-      expect(calls.last.arguments['filename'], startsWith('hyner-quotation-'));
+      expect(
+        calls.last.arguments['filename'],
+        startsWith('Quotation_Sudip Buyer_'),
+      );
+      expect(calls.last.arguments['filename'], endsWith('.pdf'));
       final text = pdfText(calls.last.arguments['bytes'] as Uint8List);
       expect(text, contains('QUOTATION'));
       expect(text, contains('Market road'));
@@ -240,7 +244,8 @@ void main() {
         await tester.pageBack();
         await tester.pumpAndSettle();
       }
-      await tap(tester, find.byTooltip('Saved quotations'));
+      await tap(tester, find.byTooltip('Calculator options'));
+      await tap(tester, find.text('Saved quotations'));
       expect(find.text('Sudip Buyer'), findsOneWidget);
       await tap(tester, find.text('Sudip Buyer'));
       expect(find.byKey(const Key('quotation-download')), findsOneWidget);

@@ -10,7 +10,7 @@ import 'package:hyner/features/auth/data/device_access_repository.dart';
 import 'package:hyner/features/auth/domain/auth_repository.dart';
 import 'package:hyner/features/auth/presentation/session_controller.dart';
 import 'package:hyner/features/pricing/data/preview_workspace.dart';
-import 'package:hyner/features/pricing/presentation/workspace_quickprice_screen.dart';
+import 'package:hyner/features/pricing/application/pricing_workspace_provider.dart';
 import 'package:hyner/features/pricing/presentation/rate_cards_screen.dart';
 import 'package:hyner/features/pricing/presentation/simple_calculator_screen.dart';
 import 'package:hyner/features/profile/domain/user_profile.dart';
@@ -59,7 +59,9 @@ void main() {
       await tester.pumpAndSettle();
       container.read(routerProvider).go('/quickprice');
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Manage rates'));
+      await tester.tap(find.byTooltip('Calculator options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Calculators and rates'));
       await tester.pumpAndSettle();
       expect(find.byType(SimpleCalculatorScreen), findsOneWidget);
       // First-use setup opens a dialog inside the scoped navigator.
@@ -84,7 +86,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(sessionProvider).profile!.uid, 'bob');
       expect(find.byType(RateCardsScreen), findsNothing);
-      await tester.tap(find.byTooltip('Manage rates'));
+      await tester.tap(find.byTooltip('Calculator options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Calculators and rates'));
       await tester.pumpAndSettle();
       expect(find.byType(SimpleCalculatorScreen), findsOneWidget);
       expect(await tester.binding.handlePopRoute(), isTrue);
@@ -150,17 +154,19 @@ void main() {
       final container = ProviderScope.containerOf(element);
       expect(container.read(sessionProvider).profile!.localOnly, isTrue);
       expect(remote.isCompleted, isFalse);
-      await tester.tap(find.widgetWithText(FilledButton, 'Open QuickPrice'));
+      await tester.tap(find.text('Quick price'));
       await tester.pumpAndSettle();
       expect(find.text('Set up your calculator'), findsOneWidget);
-      await tester.tap(find.byTooltip('About this workspace'));
+      await tester.tap(find.byTooltip('Calculator options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('About this workspace'));
       await tester.pumpAndSettle();
       expect(find.text('Firebase setup has not completed.'), findsNothing);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Inventory').last);
+      await tester.tap(find.text('Stock').last);
       await tester.pumpAndSettle();
       expect(find.text('No products yet'), findsOneWidget);
       for (final path in ['/sales', '/purchases', '/customers', '/reports']) {

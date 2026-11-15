@@ -391,25 +391,30 @@ class LocalSalesRepository implements SalesRepository {
         at: now,
       );
 
+      final savedLines = <Map<String, Object?>>[];
       for (var index = 0; index < draft.lines.length; index++) {
         final line = draft.lines[index];
-        if (!line.stockTracked) continue;
+        if (!line.stockTracked) {
+          savedLines.add(_storedLine(line));
+          continue;
+        }
+        final stockSku = line.stockSku!;
         final rows = await tx.query(
           'products',
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
           limit: 1,
         );
         if (rows.isEmpty) {
           throw inventoryInvalid(
-            'Product ${line.sku} is no longer in inventory. Refresh the bill.',
+            'Linked inventory product $stockSku is no longer available. Refresh the bill.',
           );
         }
         final row = rows.single;
         final product = _productFromRow(row);
         if (product.archived || product.currency != draft.currency) {
           throw inventoryInvalid(
-            'Product ${line.sku} is unavailable for this bill. Refresh the bill.',
+            'Linked inventory product ${product.name} is unavailable for this bill. Refresh the bill.',
           );
         }
         if (product.quantity < line.quantity) {
@@ -429,11 +434,11 @@ class LocalSalesRepository implements SalesRepository {
             'updatedAt': now.toIso8601String(),
           },
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
         );
         await tx.insert('movements', {
           'id': movementId,
-          'sku': line.sku,
+          'sku': stockSku,
           'type': 'sale',
           'beforeQuantity': product.quantity,
           'afterQuantity': nextQuantity,
@@ -443,25 +448,23 @@ class LocalSalesRepository implements SalesRepository {
           'revision': revision,
           'createdAt': now.toIso8601String(),
         });
+        savedLines.add(
+          _storedLine(
+            line,
+            // QuickPrice uses the inventory item's cost at checkout as an
+            // immutable bill snapshot. Its customer price remains untouched.
+            unitCostMinor: line.pricing == null
+                ? line.unitCostMinor
+                : product.costMinor,
+            inventoryCostKnown: line.pricing != null && product.costMinor > 0,
+          ),
+        );
       }
 
       await tx.insert('sales', {
         'id': id,
         'currency': draft.currency,
-        'lines': jsonEncode([
-          for (final line in draft.lines)
-            {
-              'sku': line.sku,
-              'name': line.name,
-              'unitPriceMinor': line.unitPriceMinor,
-              'unitCostMinor': line.unitCostMinor,
-              'quantity': line.quantity,
-              if (line.pricing != null) 'pricing': line.pricing!.toJson(),
-              'parameters': [
-                for (final parameter in line.parameters) parameter.toMap(),
-              ],
-            },
-        ]),
+        'lines': jsonEncode(savedLines),
         'customerId': customer.id,
         'customerName': draft.customerName,
         'customerPhone': draft.customerPhone,
@@ -511,15 +514,16 @@ class LocalSalesRepository implements SalesRepository {
       for (var index = 0; index < prior.draft.lines.length; index++) {
         final line = prior.draft.lines[index];
         if (!line.stockTracked) continue;
+        final stockSku = line.stockSku!;
         final products = await tx.query(
           'products',
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
           limit: 1,
         );
         if (products.isEmpty) {
           throw inventoryInvalid(
-            'Inventory product ${line.sku} is missing. Restore it before deleting this bill.',
+            'Inventory product $stockSku is missing. Restore it before deleting this bill.',
           );
         }
         final product = _productFromRow(products.single);
@@ -527,7 +531,7 @@ class LocalSalesRepository implements SalesRepository {
         final revision = product.revision + 1;
         if (quantity > maxStock || revision > maxStock) {
           throw inventoryInvalid(
-            'Stock for ${line.sku} cannot be restored within the inventory limits. The bill has not been deleted.',
+            'Stock for $stockSku cannot be restored within the inventory limits. The bill has not been deleted.',
           );
         }
         final movementId = _localId();
@@ -541,11 +545,11 @@ class LocalSalesRepository implements SalesRepository {
             'updatedAt': now,
           },
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
         );
         await tx.insert('movements', {
           'id': movementId,
-          'sku': line.sku,
+          'sku': stockSku,
           'type': 'adjustment',
           'beforeQuantity': product.quantity,
           'afterQuantity': quantity,
@@ -677,7 +681,12 @@ Sale _saleFromRow(Map<String, Object?> row) {
         raw['unitCostMinor'] != null && raw['unitCostMinor'] is! int ||
         raw['quantity'] is! int ||
         raw['pricing'] != null && raw['pricing'] is! Map<String, dynamic> ||
-        raw['pricing'] != null && raw['unitCostMinor'] != 0 ||
+        raw['pricing'] != null &&
+            raw['unitCostMinor'] != 0 &&
+            raw['inventorySku'] == null ||
+        raw['inventorySku'] != null && raw['inventorySku'] is! String ||
+        raw['inventoryCostKnown'] != null &&
+            raw['inventoryCostKnown'] is! bool ||
         raw['parameters'] != null &&
             (raw['parameters'] is! List ||
                 (raw['parameters'] as List).any(
@@ -700,6 +709,8 @@ Sale _saleFromRow(Map<String, Object?> row) {
             : SalePriceSnapshot.fromJson(
                 raw['pricing'] as Map<String, dynamic>,
               ),
+        inventorySku: raw['inventorySku'] as String?,
+        inventoryCostKnown: raw['inventoryCostKnown'] as bool? ?? false,
         parameters: [
           for (final entry in (raw['parameters'] as List? ?? const []))
             ProductParameter.fromMap(entry as Map<dynamic, dynamic>),
@@ -774,6 +785,23 @@ Sale _saleFromRow(Map<String, Object?> row) {
         : DateTime.parse(row['followupAt']! as String),
   );
 }
+
+Map<String, Object?> _storedLine(
+  SaleLine line, {
+  int? unitCostMinor,
+  bool? inventoryCostKnown,
+}) => {
+  'sku': line.sku,
+  'name': line.name,
+  'unitPriceMinor': line.unitPriceMinor,
+  'unitCostMinor': unitCostMinor ?? line.unitCostMinor,
+  'quantity': line.quantity,
+  if (line.pricing != null) 'pricing': line.pricing!.toJson(),
+  if (line.inventorySku != null) 'inventorySku': line.inventorySku,
+  if (line.inventorySku != null)
+    'inventoryCostKnown': inventoryCostKnown ?? line.inventoryCostKnown,
+  'parameters': [for (final parameter in line.parameters) parameter.toMap()],
+};
 
 Product _productFromRow(Map<String, Object?> row) {
   final product = Product(

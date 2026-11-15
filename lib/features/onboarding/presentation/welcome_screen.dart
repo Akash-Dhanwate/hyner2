@@ -54,12 +54,12 @@ class WelcomeScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 40),
                         Text(
-                          'Prices, stock and bills.',
+                          'Welcome to Hyner',
                           style: theme.textTheme.headlineMedium,
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Calculate an item, build a bill and keep customer records together.',
+                          'Set up your shop and start managing your business.',
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -86,7 +86,7 @@ class WelcomeScreen extends ConsumerWidget {
                                       .read(sessionProvider.notifier)
                                       .useDevice(),
                             icon: const Icon(Icons.phone_android_outlined),
-                            label: const Text('Use on this device'),
+                            label: const Text('Get started'),
                           ),
                           const SizedBox(height: 12),
                         ],
@@ -111,7 +111,7 @@ class WelcomeScreen extends ConsumerWidget {
                         TextButton.icon(
                           onPressed: () => context.push<void>('/quickprice'),
                           icon: const Icon(Icons.calculate_outlined),
-                          label: const Text('Open QuickPrice'),
+                          label: const Text('Explore on my own'),
                         ),
                       ],
                     ),

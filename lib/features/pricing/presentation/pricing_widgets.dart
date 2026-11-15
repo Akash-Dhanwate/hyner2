@@ -19,6 +19,7 @@ class ValueField extends StatefulWidget {
     required this.onChanged,
     this.numeric = false,
     this.helper,
+    this.prefixIcon,
     this.large = false,
     this.lines = 1,
   });
@@ -26,6 +27,7 @@ class ValueField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool numeric, large;
   final String? helper;
+  final IconData? prefixIcon;
   final int lines;
   @override
   State<ValueField> createState() => _ValueFieldState();
@@ -74,6 +76,9 @@ class _ValueFieldState extends State<ValueField> {
       labelText: widget.label,
       helperText: widget.helper,
       helperMaxLines: 3,
+      prefixIcon: widget.prefixIcon == null
+          ? null
+          : Icon(widget.prefixIcon, size: 20),
     ),
   );
 }

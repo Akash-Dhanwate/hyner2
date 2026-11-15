@@ -15,7 +15,7 @@ import 'package:hyner/features/pricing/application/estimate_builder.dart';
 import 'package:hyner/features/pricing/application/calculator_session.dart';
 import 'package:hyner/features/pricing/presentation/estimate_screen.dart';
 import 'package:hyner/features/pricing/presentation/quickprice_screen.dart';
-import 'package:hyner/features/pricing/presentation/workspace_quickprice_screen.dart';
+import 'package:hyner/features/pricing/application/pricing_workspace_provider.dart';
 
 import 'business/support/fakes.dart';
 import 'business/support/inventory_fakes.dart';

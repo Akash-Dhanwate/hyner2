@@ -10,7 +10,7 @@ import '../../inventory/presentation/inventory_controller.dart';
 import '../../pricing/application/calculator_session.dart';
 import '../../pricing/application/estimate_builder.dart';
 import '../../pricing/application/workspace.dart';
-import '../../pricing/presentation/workspace_quickprice_screen.dart';
+import '../../pricing/application/pricing_workspace_provider.dart';
 import '../domain/sale_checkout_seed.dart';
 import 'sale_editor_screen.dart';
 import 'sales_controller.dart';

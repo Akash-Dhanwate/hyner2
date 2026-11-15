@@ -11,20 +11,9 @@ import '../../../core/errors/app_failure.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../sales/presentation/sales_controller.dart';
 import '../application/estimate_builder.dart';
-import '../application/open_workspace.dart';
+import '../application/pricing_workspace_provider.dart';
 import '../application/workspace.dart';
 import 'quickprice_screen.dart';
-
-final pricingWorkspaceProvider =
-    FutureProvider.family<QuickPriceWorkspace, String?>((ref, uid) async {
-      final workspace = await openQuickPriceWorkspace(accountUid: uid);
-      if (!ref.mounted) {
-        await workspace.close();
-        throw StateError('Workspace closed');
-      }
-      ref.onDispose(() => unawaited(workspace.close()));
-      return workspace;
-    });
 
 /// Device pricing from earlier APKs stays available. Account pricing uses its
 /// own local scope and never grants cloud business membership.

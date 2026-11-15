@@ -425,44 +425,44 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
               child: const Icon(Icons.receipt_long_outlined),
             ),
           ),
-          if (widget.onQuotationHistory != null)
-            IconButton(
-              tooltip: 'Saved quotations',
-              onPressed: widget.onQuotationHistory,
-              icon: const Icon(Icons.folder_outlined),
-            ),
-          IconButton(
-            tooltip: 'Manage rates',
-            onPressed: _manage,
-            icon: const Icon(Icons.tune),
+          PopupMenuButton<String>(
+            tooltip: 'Calculator options',
+            onSelected: (action) {
+              switch (action) {
+                case 'manage':
+                  unawaited(_manage());
+                  break;
+                case 'rates':
+                  unawaited(_editRates());
+                  break;
+                case 'quotations':
+                  widget.onQuotationHistory?.call();
+                  break;
+                case 'about':
+                  unawaited(_info());
+                  break;
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'manage',
+                child: Text('Calculators and rates'),
+              ),
+              PopupMenuItem(
+                value: 'rates',
+                child: const Text('Edit selling rates'),
+              ),
+              if (widget.onQuotationHistory != null)
+                const PopupMenuItem(
+                  value: 'quotations',
+                  child: Text('Saved quotations'),
+                ),
+              const PopupMenuItem(
+                value: 'about',
+                child: Text('About this workspace'),
+              ),
+            ],
           ),
-          if (card != null)
-            PopupMenuButton<String>(
-              tooltip: 'More options',
-              onSelected: (action) {
-                if (action == 'rates') {
-                  _editRates();
-                } else {
-                  _info();
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'rates',
-                  child: Text('Edit selling rates'),
-                ),
-                PopupMenuItem(
-                  value: 'about',
-                  child: Text('About this workspace'),
-                ),
-              ],
-            )
-          else
-            IconButton(
-              tooltip: 'About this workspace',
-              onPressed: _info,
-              icon: const Icon(Icons.info_outline),
-            ),
         ],
       ),
       body: SafeArea(

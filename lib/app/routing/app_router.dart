@@ -14,6 +14,8 @@ import '../../features/inventory/presentation/product_detail_screen.dart';
 import '../../features/inventory/presentation/product_editor_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/onboarding/presentation/welcome_screen.dart';
+import '../../features/onboarding/presentation/first_time_user_guide_screen.dart';
+import '../../features/onboarding/presentation/help_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/purchases/presentation/purchase_detail_screen.dart';
 import '../../features/purchases/presentation/purchase_editor_screen.dart';
@@ -69,7 +71,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', redirect: (context, state) => '/dashboard'),
       GoRoute(
         path: '/quickprice',
-        builder: (context, state) => const WorkspaceQuickPriceScreen(),
+        builder: (context, state) => WorkspaceShell(
+          location: '/quickprice',
+          showAppBar: false,
+          child: const WorkspaceQuickPriceScreen(),
+        ),
       ),
       GoRoute(
         path: '/splash',
@@ -83,6 +89,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/sign-in',
         builder: (context, state) => const SignInScreen(),
       ),
+      GoRoute(
+        path: '/getting-started',
+        builder: (context, state) => FirstTimeUserGuideScreen(
+          uid: ref.read(sessionProvider).profile!.uid,
+        ),
+      ),
+      _page('/help', const HelpScreen()),
       GoRoute(
         path: '/account-setup',
         builder: (context, state) => const AccountSetupScreen(),

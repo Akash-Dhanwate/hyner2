@@ -34,14 +34,18 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  Future<Product> stock({String sku = 'A', int quantity = 10}) async {
+  Future<Product> stock({
+    String sku = 'A',
+    int quantity = 10,
+    int costMinor = 50,
+  }) async {
     await inventory.create(
       'owner',
       ProductDraft(
         sku: sku,
         name: 'Measured panel',
         currency: 'INR',
-        costMinor: 50,
+        costMinor: costMinor,
         priceMinor: 100,
         openingStock: quantity,
         reorderLevel: 1,
@@ -89,6 +93,116 @@ void main() {
     expect(reopened.draft.matches(saved.draft), isTrue);
     expect(reopened.remainingMinor, draft.totalMinor);
   });
+
+  test(
+    'linked QuickPrice lines deduct stock once and snapshot purchase cost',
+    () async {
+      final product = await stock(quantity: 10);
+      final quote = measuredSaleLine(0);
+      final linked = SaleLine(
+        sku: quote.sku,
+        name: quote.name,
+        unitPriceMinor: quote.unitPriceMinor,
+        quantity: quote.quantity,
+        pricing: quote.pricing,
+        inventorySku: product.sku,
+        parameters: quote.parameters,
+      );
+      final draft = customSaleDraft([linked]);
+
+      await sales.create('owner', 'linked-quote', draft);
+      await sales.create('owner', 'linked-quote', draft);
+
+      final saved = await sales.get('owner', 'linked-quote');
+      expect((await inventory.get('owner', product.sku)).quantity, 7);
+      expect(saved.draft.lines.single.inventorySku, product.sku);
+      expect(saved.draft.lines.single.unitCostMinor, 50);
+      expect(saved.draft.lines.single.inventoryCostKnown, isTrue);
+      final db = await store.databaseFor('owner');
+      expect(
+        await db.query('movements', where: 'type = ?', whereArgs: ['sale']),
+        hasLength(1),
+      );
+
+      final report = await LocalReportsRepository(store).load(
+        uid: 'owner',
+        currency: 'INR',
+        start: saved.createdAt.subtract(const Duration(days: 1)),
+        endExclusive: saved.createdAt.add(const Duration(days: 1)),
+      );
+      expect(report.revenueMinor, BigInt.from(340));
+      expect(report.costOfGoodsMinor, BigInt.from(150));
+      expect(report.grossProfitMinor, BigInt.from(190));
+      expect(report.uncostedSalesCount, 0);
+      expect(report.topProducts.single.sku, product.sku);
+
+      await sales.delete('owner', 'linked-quote', expectedPaidMinor: 0);
+      expect((await inventory.get('owner', product.sku)).quantity, 10);
+      expect(
+        await db.query('movements', where: 'type = ?', whereArgs: ['sale']),
+        hasLength(1),
+      );
+    },
+  );
+
+  test('selected QuickPrice variety deducts only its own stock item', () async {
+    final solid = await stock(sku: 'DOOR-SOLID', quantity: 8);
+    final grooved = await stock(sku: 'DOOR-GROOVED', quantity: 6);
+    final quote = measuredSaleLine(
+      2,
+      result: measuredQuote(variety: 'premium', quantity: 2),
+    );
+    final linked = SaleLine(
+      sku: quote.sku,
+      name: quote.name,
+      unitPriceMinor: quote.unitPriceMinor,
+      quantity: quote.quantity,
+      pricing: quote.pricing,
+      inventorySku: grooved.sku,
+      parameters: quote.parameters,
+    );
+    final draft = customSaleDraft([linked]);
+
+    await sales.create('owner', 'grooved-sale', draft);
+    await sales.create('owner', 'grooved-sale', draft);
+
+    expect((await inventory.get('owner', solid.sku)).quantity, 8);
+    expect((await inventory.get('owner', grooved.sku)).quantity, 4);
+    expect(
+      (await inventory.movements('owner', grooved.sku)).movements
+          .where((movement) => movement.type == 'sale'),
+      hasLength(1),
+    );
+  });
+
+  test(
+    'zero purchase cost stays uncosted instead of claiming full profit',
+    () async {
+      final product = await stock(sku: 'UNKNOWN-COST', costMinor: 0);
+      final quote = measuredSaleLine(0);
+      final linked = SaleLine(
+        sku: quote.sku,
+        name: quote.name,
+        unitPriceMinor: quote.unitPriceMinor,
+        quantity: quote.quantity,
+        pricing: quote.pricing,
+        inventorySku: product.sku,
+        parameters: quote.parameters,
+      );
+      await sales.create('owner', 'unknown-cost', customSaleDraft([linked]));
+      final sale = await sales.get('owner', 'unknown-cost');
+      final report = await LocalReportsRepository(store).load(
+        uid: 'owner',
+        currency: 'INR',
+        start: sale.createdAt.subtract(const Duration(days: 1)),
+        endExclusive: sale.createdAt.add(const Duration(days: 1)),
+      );
+      expect(sale.draft.lines.single.inventoryCostKnown, isFalse);
+      expect(report.uncostedSalesCount, 1);
+      expect(report.trackedRevenueMinor, BigInt.zero);
+      expect(report.grossProfitMinor, BigInt.zero);
+    },
+  );
 
   test('concurrent retries and canonical JSON apply mixed stock once', () async {
     final product = await stock();

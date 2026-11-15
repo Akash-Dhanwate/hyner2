@@ -235,7 +235,13 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
         await repository.update(uid, draft, widget.product!.revision);
       }
       if (!mounted || ref.read(inventoryUidProvider) != uid) return;
-      inventory.didWrite(uid, draft.sku, refreshProduct: false);
+      inventory.didWrite(
+        uid,
+        draft.sku,
+        refreshProduct: false,
+        clearSearch:
+            widget.product != null && widget.product!.name != draft.name,
+      );
       if (widget.product == null && ref.read(inventoryUidProvider) == uid) {
         await inventory.refresh(query: const InventoryQuery());
       }

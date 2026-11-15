@@ -141,15 +141,9 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       separatorBuilder: (_, _) => const Divider(),
                       itemBuilder: (context, index) {
                         final customer = items[index];
-                        final details = [
-                          if (customer.phone.isNotEmpty) customer.phone,
-                          'Customer ID: ${customer.reference}',
-                          'Added: ${customerAddedDate(customer.createdAt)}',
-                          if (customer.address.isNotEmpty) customer.address,
-                          if (customer.whatsappOptIn)
-                            'WhatsApp updates allowed',
-                          if (customer.notes.isNotEmpty) customer.notes,
-                        ].join(' · ');
+                        final details = customer.phone.isNotEmpty
+                            ? customer.phone
+                            : 'Customer ID: ${customer.reference}';
                         return ListTile(
                           key: ValueKey('customer-${customer.id}'),
                           contentPadding: EdgeInsets.zero,

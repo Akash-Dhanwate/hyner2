@@ -11,7 +11,7 @@ import 'package:hyner/app/hyner_app.dart';
 import 'package:hyner/app/routing/app_router.dart';
 import 'package:hyner/features/pricing/application/calculator_session.dart';
 import 'package:hyner/features/pricing/application/estimate_builder.dart';
-import 'package:hyner/features/pricing/presentation/workspace_quickprice_screen.dart';
+import 'package:hyner/features/pricing/application/pricing_workspace_provider.dart';
 import 'package:hyner/features/sales/data/bill_pdf_service.dart';
 import 'package:hyner/features/sales/domain/sale.dart';
 import 'package:hyner/features/settings/domain/payment_settings.dart';

@@ -3,15 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/routing/workspace_navigation.dart';
-import '../../../core/widgets/page_content.dart';
-import '../../../core/widgets/financial_amount.dart';
-import '../../../core/widgets/workspace_components.dart';
 import '../../../core/performance/performance_recorder.dart';
+import '../../../core/widgets/financial_amount.dart';
+import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/workspace_components.dart';
 import '../../auth/presentation/session_controller.dart';
-import '../../customers/presentation/customers_controller.dart';
+import '../../inventory/presentation/inventory_controller.dart';
+import '../../inventory/domain/product.dart';
 import '../../reports/domain/business_report.dart';
 import '../../reports/presentation/report_charts.dart';
 import '../../reports/presentation/reports_controller.dart';
+import '../../sales/domain/sale.dart';
+import '../../sales/presentation/sales_controller.dart';
+import '../../onboarding/presentation/first_time_user_guide_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -19,205 +23,448 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(sessionProvider).profile;
-    final today = DateTime.now();
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayQuery = ReportQuery(
+      currency: 'INR',
+      period: ReportPeriod.today,
+      start: todayStart,
+      endExclusive: todayStart.add(const Duration(days: 1)),
+    );
     final allTimeQuery = ReportQuery(
       currency: 'INR',
       period: ReportPeriod.allTime,
       start: DateTime(1970, 1, 1),
-      endExclusive: DateTime(today.year, today.month, today.day + 1),
+      endExclusive: todayStart.add(const Duration(days: 1)),
     );
-    final report = ref.watch(businessReportProvider(allTimeQuery));
-    final customers = ref.watch(customersProvider);
+    final todayReport = ref.watch(businessReportProvider(todayQuery));
+    final allTimeReport = ref.watch(businessReportProvider(allTimeQuery));
+    final recent = ref.watch(recentSalesProvider);
+    final stock = ref.watch(inventoryProvider);
     final theme = Theme.of(context);
-    if (report.hasValue &&
-        !report.isLoading &&
-        customers.hasValue &&
-        !customers.isLoading) {
+
+    if (todayReport.hasValue && recent.hasValue && !todayReport.isLoading) {
       PerformanceRecorder.afterFrame(PerformanceMilestone.dashboardReady);
     }
+
     return PageContent(
       children: [
-        const Eyebrow('Home'),
-        const SizedBox(height: 10),
         Text(
           'Hello, ${profile?.firstName ?? 'there'}.',
           style: theme.textTheme.headlineMedium,
         ),
-        const SizedBox(height: 16),
-        ResponsivePair(
-          first: FilledButton.icon(
-            onPressed: () =>
-                openWorkspacePage(GoRouter.of(context), '/quickprice'),
-            icon: const Icon(Icons.calculate_outlined),
-            label: const Text('Open QuickPrice'),
-          ),
-          second: OutlinedButton.icon(
-            onPressed: () => openWorkspacePage(GoRouter.of(context), '/sales'),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Build a bill'),
-          ),
-          gap: 8,
-        ),
+        const SizedBox(height: 6),
+        Text('Here is your business today.', style: theme.textTheme.bodyMedium),
         if (profile?.localOnly == true) ...[
-          const SizedBox(height: 10),
-          const Text('Device workspace · Saved on this phone'),
+          const SizedBox(height: 8),
+          Text(
+            'Device workspace · Saved on this phone',
+            style: theme.textTheme.bodySmall,
+          ),
         ],
-        const SizedBox(height: 22),
-        Text('Business snapshot', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text('All time · INR', style: theme.textTheme.bodySmall),
+        if (profile != null) ...[
+          const SizedBox(height: 16),
+          FirstTimeUserGuidePrompt(uid: profile.uid),
+        ],
+        const SizedBox(height: 24),
+        Text('Today at a glance', style: theme.textTheme.titleLarge),
         const SizedBox(height: 16),
-        _DashboardMetrics(
-          customerCount: customers.asData?.value.length,
-          report: report.asData?.value,
-          customersLoading: customers.isLoading,
-          reportLoading: report.isLoading,
-        ),
-        if (customers.hasError) ...[
-          const SizedBox(height: 12),
-          const InlineNotice('Customer count could not be loaded.'),
-          TextButton(
-            onPressed: () => ref.invalidate(customersProvider),
-            child: const Text('Retry customer count'),
-          ),
-        ],
-        const SizedBox(height: 14),
-        report.when(
+        todayReport.when(
           loading: () => const LinearProgressIndicator(),
-          error: (_, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const InlineNotice('Business totals could not be loaded.'),
-              TextButton(
+          error: (_, _) => _RetryMessage(
+            message: 'Today’s sales could not be loaded.',
+            onRetry: () => ref.invalidate(businessReportProvider(todayQuery)),
+          ),
+          data: (report) =>
+              _TodaySummary(report: report, outstanding: allTimeReport),
+        ),
+        const SizedBox(height: 22),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 360;
+            final actions = [
+              FilledButton.icon(
                 onPressed: () =>
-                    ref.invalidate(businessReportProvider(allTimeQuery)),
-                child: const Text('Retry business totals'),
+                    openWorkspacePage(GoRouter.of(context), '/sales'),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('New bill'),
               ),
-            ],
+              OutlinedButton.icon(
+                onPressed: () =>
+                    openWorkspacePage(GoRouter.of(context), '/quickprice'),
+                icon: const Icon(Icons.calculate_outlined),
+                label: const Text('Quick price'),
+              ),
+            ];
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      actions[0],
+                      const SizedBox(height: 8),
+                      actions[1],
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: actions[0]),
+                      const SizedBox(width: 10),
+                      Expanded(child: actions[1]),
+                    ],
+                  );
+          },
+        ),
+        const SizedBox(height: 28),
+        Text('Needs attention', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 8),
+        _AttentionItems(
+          report: allTimeReport,
+          stock: stock,
+          onRetry: () {
+            ref.invalidate(businessReportProvider(allTimeQuery));
+            ref.invalidate(inventoryProvider);
+          },
+        ),
+        const SizedBox(height: 24),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stack =
+                constraints.maxWidth < 360 ||
+                MediaQuery.textScalerOf(context).scale(16) > 24;
+            final title = Text(
+              'Recent bills',
+              style: theme.textTheme.titleLarge,
+            );
+            final action = TextButton(
+              onPressed: () =>
+                  openWorkspacePage(GoRouter.of(context), '/sales/history'),
+              child: const Text('View all'),
+            );
+            return stack
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [title, action],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: title),
+                      action,
+                    ],
+                  );
+          },
+        ),
+        recent.when(
+          loading: () => const LinearProgressIndicator(),
+          error: (_, _) => _RetryMessage(
+            message: 'Recent bills could not be loaded.',
+            onRetry: () => ref.invalidate(recentSalesProvider),
           ),
-          data: (data) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              RecordFact(
-                label: data.hasIncompleteCosts
-                    ? 'Known-cost earnings'
-                    : 'Earnings after costs',
-                value: formatBigMoney(
-                  data.earningsAfterCostsMinor,
-                  data.currency,
+          data: (sales) => sales.isEmpty
+              ? const _EmptyRecentBills()
+              : Column(
+                  children: [
+                    for (final sale in sales.take(3))
+                      _RecentBillRow(sale: sale),
+                  ],
                 ),
-                detail: data.hasIncompleteCosts
-                    ? 'Some bills have no saved buying costs'
-                    : 'After buying costs and operating expenses',
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () => openWorkspacePage(GoRouter.of(context), '/reports'),
+          icon: const Icon(Icons.bar_chart_rounded),
+          label: const Text('Open reports'),
+        ),
+        const SizedBox(height: 20),
+        DisclosureSection(
+          title: 'Business summary',
+          summary: 'Earnings and activity details',
+          maintainState: false,
+          children: [
+            allTimeReport.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, _) => _RetryMessage(
+                message: 'Business totals could not be loaded.',
+                onRetry: () =>
+                    ref.invalidate(businessReportProvider(allTimeQuery)),
               ),
-              RecordFact(
-                label: 'Balance due',
-                value: formatBigMoney(data.unpaidRevenueMinor, data.currency),
-              ),
-              Wrap(
-                spacing: 12,
+              data: (report) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton(
-                    onPressed: () => openWorkspacePage(
-                      GoRouter.of(context),
-                      '/sales/remaining',
+                  RecordFact(
+                    label: report.hasIncompleteCosts
+                        ? 'Known-cost earnings'
+                        : 'Earnings after costs',
+                    value: formatBigMoney(
+                      report.earningsAfterCostsMinor,
+                      report.currency,
                     ),
-                    child: const Text('View unpaid bills'),
+                    detail: report.hasIncompleteCosts
+                        ? 'Some bills have no saved buying costs'
+                        : 'After buying costs and operating expenses',
                   ),
-                  TextButton(
-                    onPressed: () =>
-                        openWorkspacePage(GoRouter.of(context), '/reports'),
-                    child: const Text('View reports'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              DisclosureSection(
-                title: 'Activity details',
-                maintainState: false,
-                summary: 'Revenue, expenses and payments',
-                children: [
-                  ActivityBarChart(report: data),
                   const SizedBox(height: 16),
-                  PaymentDonutChart(report: data),
+                  ActivityBarChart(report: report),
+                  const SizedBox(height: 16),
+                  PaymentDonutChart(report: report),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _DashboardMetrics extends StatelessWidget {
-  const _DashboardMetrics({
-    required this.customerCount,
-    required this.report,
-    required this.customersLoading,
-    required this.reportLoading,
-  });
-  final int? customerCount;
-  final BusinessReport? report;
-  final bool customersLoading, reportLoading;
+class _TodaySummary extends StatelessWidget {
+  const _TodaySummary({required this.report, required this.outstanding});
+  final BusinessReport report;
+  final AsyncValue<BusinessReport> outstanding;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final values = [
-      (
-        'customers',
-        'Customers',
-        customerCount?.toString() ?? (customersLoading ? '…' : '—'),
-        Icons.people_outline_rounded,
-      ),
-      (
-        'sales',
-        'Sales',
-        report?.salesCount.toString() ?? (reportLoading ? '…' : '—'),
-        Icons.receipt_long_outlined,
-      ),
-      (
-        'revenue',
-        'Revenue',
-        report == null
-            ? (reportLoading ? '…' : '—')
-            : formatBigMoney(report!.revenueMinor, report!.currency),
-        Icons.trending_up_rounded,
-      ),
-    ];
+    final outstandingReport = outstanding.asData?.value;
+    final outstandingAmount = outstandingReport == null
+        ? (outstanding.isLoading ? '…' : '—')
+        : formatBigMoney(
+            outstandingReport.unpaidRevenueMinor,
+            outstandingReport.currency,
+          );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final stack =
-            constraints.maxWidth < 320 ||
-            MediaQuery.textScalerOf(context).scale(16) > 24;
-        final width = stack
+        final figures = <Widget>[
+          _FinancialFigure(
+            label: 'Today’s billed sales',
+            amount: formatBigMoney(report.revenueMinor, report.currency),
+          ),
+          _FinancialFigure(
+            label: 'Cost of items sold',
+            amount: formatBigMoney(report.costOfGoodsMinor, report.currency),
+          ),
+          _FinancialFigure(
+            label: 'Gross profit before expenses',
+            amount: formatBigMoney(report.grossProfitMinor, report.currency),
+          ),
+          _FinancialFigure(
+            label: 'Outstanding dues',
+            amount: outstandingAmount,
+          ),
+        ];
+        final singleColumn = constraints.maxWidth < 300;
+        final width = singleColumn
             ? constraints.maxWidth
-            : (constraints.maxWidth - 32) / 3;
-        return Wrap(
-          spacing: 16,
-          runSpacing: 20,
+            : (constraints.maxWidth - 16) / 2;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final value in values)
-              SizedBox(
-                key: ValueKey('dashboard-metric-${value.$1}'),
-                width: width,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(value.$2, style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 6),
-                    FinancialAmount(
-                      value.$3,
-                      textKey: ValueKey('dashboard-value-${value.$1}'),
-                      compact: value.$1 != 'revenue',
-                    ),
-                  ],
-                ),
+            Wrap(
+              spacing: 16,
+              runSpacing: 18,
+              children: [
+                for (final figure in figures)
+                  SizedBox(width: width, child: figure),
+              ],
+            ),
+            if (report.hasIncompleteCosts) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Gross profit excludes ${report.uncostedSalesCount} ${report.uncostedSalesCount == 1 ? 'bill' : 'bills'} without a saved purchase cost.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
+            ],
           ],
         );
       },
     );
   }
+}
+
+class _FinancialFigure extends StatelessWidget {
+  const _FinancialFigure({required this.label, required this.amount});
+  final String label, amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 6),
+        FinancialAmount(amount, compact: false),
+      ],
+    );
+  }
+}
+
+class _AttentionItems extends StatelessWidget {
+  const _AttentionItems({
+    required this.report,
+    required this.stock,
+    required this.onRetry,
+  });
+  final AsyncValue<BusinessReport> report;
+  final InventoryState stock;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final lowStock = stock.products.where((product) => product.isLowStock);
+    final hasDue =
+        report.asData?.value.unpaidRevenueMinor != null &&
+        report.asData!.value.unpaidRevenueMinor > BigInt.zero;
+    final items = <Widget>[];
+    if (lowStock.isNotEmpty) {
+      items.add(
+        _AttentionRow(
+          icon: Icons.warning_amber_rounded,
+          title: 'Low-stock products need review',
+          onTap: () => openWorkspacePage(GoRouter.of(context), '/inventory'),
+        ),
+      );
+    }
+    if (hasDue) {
+      items.add(
+        _AttentionRow(
+          icon: Icons.pending_actions_outlined,
+          title: 'Customer bills have an outstanding balance',
+          onTap: () =>
+              openWorkspacePage(GoRouter.of(context), '/sales/remaining'),
+        ),
+      );
+    }
+    if (report.hasError || stock.failure != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...items,
+          Row(
+            children: [
+              const Expanded(child: Text('Some alerts could not be checked.')),
+              TextButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ],
+      );
+    }
+    if (items.isEmpty) {
+      final stillChecking = stock.loading || report.isLoading;
+      return Text(
+        stillChecking
+            ? 'Checking stock and balances…'
+            : 'Nothing needs attention right now.',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+    return Column(children: items);
+  }
+}
+
+class _AttentionRow extends StatelessWidget {
+  const _AttentionRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(icon, color: Theme.of(context).colorScheme.tertiary),
+    title: Text(title),
+    trailing: const Icon(Icons.chevron_right_rounded),
+    onTap: onTap,
+  );
+}
+
+class _RecentBillRow extends StatelessWidget {
+  const _RecentBillRow({required this.sale});
+  final Sale sale;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final customer = sale.draft.customerName?.trim();
+    final status = switch (sale.paymentStatus) {
+      PaymentStatus.paid => 'Paid',
+      PaymentStatus.partial => 'Part paid',
+      PaymentStatus.unpaid => 'Due',
+    };
+    return Semantics(
+      button: true,
+      label:
+          '${customer?.isNotEmpty == true ? customer : 'Walk-in customer'}, '
+          '${formatMoney(sale.draft.totalMinor, sale.draft.currency)}, $status',
+      child: InkWell(
+        onTap: () =>
+            context.push<void>('/sales/${Uri.encodeComponent(sale.id)}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer?.isNotEmpty == true
+                          ? customer!
+                          : 'Walk-in customer',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(status, style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: FinancialAmount(
+                  formatMoney(sale.draft.totalMinor, sale.draft.currency),
+                  compact: true,
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyRecentBills extends StatelessWidget {
+  const _EmptyRecentBills();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('No bills yet.'),
+      TextButton.icon(
+        onPressed: () => openWorkspacePage(GoRouter.of(context), '/sales'),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Create your first bill'),
+      ),
+    ],
+  );
+}
+
+class _RetryMessage extends StatelessWidget {
+  const _RetryMessage({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(child: Text(message)),
+      TextButton(onPressed: onRetry, child: const Text('Retry')),
+    ],
+  );
 }

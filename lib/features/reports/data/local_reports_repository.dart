@@ -78,7 +78,9 @@ class LocalReportsRepository implements ReportsRepository {
               (pricing.quantity != quantity ||
                   pricing.currency != currency ||
                   pricing.unitPriceMinor != raw['unitPriceMinor'] ||
-                  raw['unitCostMinor'] != 0)) {
+                  raw['unitCostMinor'] != 0 &&
+                      (raw['inventorySku'] is! String ||
+                          raw['inventoryCostKnown'] != true))) {
             throw const FormatException('Invalid custom bill line');
           }
           final lineRevenue = pricing != null
@@ -88,9 +90,11 @@ class LocalReportsRepository implements ReportsRepository {
           saleRevenue += lineRevenue;
           saleUnits += quantity;
           final hasCost =
-              pricing == null &&
               raw['unitCostMinor'] is int &&
-              (raw['unitCostMinor'] as int) >= 0;
+              (raw['unitCostMinor'] as int) >= 0 &&
+              (pricing == null ||
+                  raw['inventorySku'] is String &&
+                      raw['inventoryCostKnown'] == true);
           if (!hasCost) {
             hasCostSnapshot = false;
           } else {
@@ -98,7 +102,7 @@ class LocalReportsRepository implements ReportsRepository {
                 BigInt.from(raw['unitCostMinor'] as int) *
                 BigInt.from(quantity);
           }
-          final sku = raw['sku'] as String;
+          final sku = raw['inventorySku'] as String? ?? raw['sku'] as String;
           final stat = productStats.putIfAbsent(
             sku,
             () => _MutableProductStat(sku: sku, name: raw['name'] as String),

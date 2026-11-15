@@ -70,9 +70,14 @@ class LocalNotificationService with WidgetsBindingObserver {
     await _enqueue(
       _QueuedNotification(
         id: id,
-        title: 'Low stock: $productName',
-        body: '$quantity left · Reorder level $reorderLevel',
+        title: quantity <= 0
+            ? 'Out of stock: $productName'
+            : 'Low stock: $productName',
+        body: quantity <= 0
+            ? 'No stock left · Reorder level $reorderLevel'
+            : '$quantity left · Reorder level $reorderLevel',
       ),
+      immediately: true,
     );
   }
 
@@ -92,10 +97,16 @@ class LocalNotificationService with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _enqueue(_QueuedNotification notification) async {
+  Future<void> _enqueue(
+    _QueuedNotification notification, {
+    bool immediately = false,
+  }) async {
     _pending[notification.id] = notification;
     final state = _lifecycleState;
-    if (state != null && state != AppLifecycleState.resumed) {
+    if (immediately) {
+      _pending.remove(notification.id);
+      await _show(notification);
+    } else if (state != null && state != AppLifecycleState.resumed) {
       await _flush();
     }
   }
@@ -105,17 +116,21 @@ class LocalNotificationService with WidgetsBindingObserver {
     final queued = _pending.values.toList();
     _pending.clear();
     for (final notification in queued) {
-      try {
-        await _channel.invokeMethod<void>('show', {
-          'id': notification.id,
-          'title': notification.title,
-          'body': notification.body,
-        });
-      } on PlatformException {
-        // A disabled permission or channel should not interrupt the app.
-      } on MissingPluginException {
-        // Notifications are available only on the native Android app.
-      }
+      await _show(notification);
+    }
+  }
+
+  Future<void> _show(_QueuedNotification notification) async {
+    try {
+      await _channel.invokeMethod<void>('show', {
+        'id': notification.id,
+        'title': notification.title,
+        'body': notification.body,
+      });
+    } on PlatformException {
+      // A disabled permission or channel should not interrupt the app.
+    } on MissingPluginException {
+      // Notifications are available only on the native Android app.
     }
   }
 

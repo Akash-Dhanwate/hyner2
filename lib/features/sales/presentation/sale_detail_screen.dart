@@ -27,6 +27,7 @@ import '../../inventory/presentation/inventory_feedback.dart';
 import '../domain/sale.dart';
 import '../data/bill_pdf_service.dart';
 import '../data/bill_pdf_actions.dart';
+import '../data/bill_pdf_filename.dart';
 import 'sales_controller.dart';
 import 'bill_contact_dialog.dart';
 import 'bill_delete_dialog.dart';
@@ -292,8 +293,10 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     if (_documentBusy || uid == null) return;
     setState(() => _documentBusy = true);
     try {
+      final filename = await BillPdfFilenamePreferences().forSale(sale, uid);
+      if (!_documentCurrent(uid)) return;
       await Printing.layoutPdf(
-        name: 'hyner-original-${sale.id}.pdf',
+        name: filename,
         onLayout: (_) {
           if (!_documentCurrent(uid)) {
             throw StateError('Account changed. Reopen the bill.');
@@ -331,10 +334,9 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         brandingCache: _branding,
       );
       if (!_documentCurrent(uid)) return;
-      await BillPdfActions.shareWhatsApp(
-        bytes,
-        'hyner-original-${sale.id}.pdf',
-      );
+      final filename = await BillPdfFilenamePreferences().forSale(sale, uid);
+      if (!_documentCurrent(uid)) return;
+      await BillPdfActions.shareWhatsApp(bytes, filename);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -410,10 +412,13 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         );
       }
       if (!_documentCurrent(uid)) return;
-      final saved = await BillPdfActions.save(
-        bytes,
-        'hyner-${duplicate ? 'duplicate' : 'original'}-${sale.id}.pdf',
+      final filename = await BillPdfFilenamePreferences().forSale(
+        sale,
+        uid,
+        duplicate: duplicate,
       );
+      if (!_documentCurrent(uid)) return;
+      final saved = await BillPdfActions.save(bytes, filename);
       if (mounted && saved != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bill PDF saved on this device.')),
@@ -479,7 +484,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     unawaited(ref.read(inventoryProvider.notifier).refresh());
     for (final line in sale.draft.lines) {
       if (line.stockTracked) {
-        ref.read(inventoryProvider.notifier).checkStock(uid, line.sku);
+        ref.read(inventoryProvider.notifier).checkStock(uid, line.stockSku!);
       }
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -501,6 +506,47 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
         children: [
           const Eyebrow('Saved sale'),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SelectableText(
+                'Bill reference · ${sale.id}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              Chip(
+                label: Text(switch (sale.paymentStatus) {
+                  PaymentStatus.paid => 'Paid',
+                  PaymentStatus.partial => 'Part paid',
+                  PaymentStatus.unpaid => 'Due',
+                }),
+              ),
+            ],
+          ),
+          Text(saleDate(sale.createdAt), style: theme.textTheme.bodySmall),
+          RecordFact(
+            label: 'Bill total',
+            value: formatMoney(sale.draft.totalMinor, sale.draft.currency),
+            prominent: true,
+          ),
+          Text('Payment', style: theme.textTheme.titleLarge),
+          ResponsivePair(
+            breakpoint: 320,
+            first: _MoneyFact('Received', sale.paidMinor, sale.draft.currency),
+            second: _MoneyFact('Remaining', remaining, sale.draft.currency),
+          ),
+          const SizedBox(height: 8),
+          DetailHint(
+            sale.paymentStatus == PaymentStatus.paid
+                ? 'This bill is fully paid. Payment was confirmed by the owner.'
+                : sale.paymentStatus == PaymentStatus.partial
+                ? 'Advance received. The remaining balance is still due.'
+                : 'Payment has not been confirmed yet. The requested QR amount is not treated as paid until the owner records it.',
+          ),
+          const SizedBox(height: 18),
+          Text('Customer details', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 6),
           Text(
             sale.draft.customerName?.trim().isNotEmpty == true
                 ? sale.draft.customerName!
@@ -512,12 +558,6 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
             SelectableText('Phone · ${sale.draft.customerPhone!}'),
           if (sale.draft.customerAddress?.isNotEmpty == true)
             SelectableText(sale.draft.customerAddress!),
-          const SizedBox(height: 8),
-          Text(saleDate(sale.createdAt), style: theme.textTheme.bodySmall),
-          SelectableText(
-            'Reference: ${sale.id}',
-            style: theme.textTheme.bodySmall,
-          ),
           if (sale.canEditContactAt(DateTime.now()))
             TextButton.icon(
               key: const Key('edit-bill-contact'),
@@ -530,11 +570,6 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               'Customer name and mobile can be corrected only within seven days of bill creation. The reference and amounts cannot be edited.',
               title: 'Contact edit window',
             ),
-          RecordFact(
-            label: 'Bill total',
-            value: formatMoney(sale.draft.totalMinor, sale.draft.currency),
-            prominent: true,
-          ),
           TextButton.icon(
             key: const Key('delete-bill'),
             style: TextButton.styleFrom(
@@ -554,29 +589,6 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               icon: const Icon(Icons.history_rounded),
               label: const Text('All customer bills'),
             ),
-          const SizedBox(height: 16),
-          Text('Payment', style: theme.textTheme.titleLarge),
-          Text(
-            sale.paymentStatus == PaymentStatus.paid
-                ? 'Paid'
-                : sale.paymentStatus == PaymentStatus.partial
-                ? 'Part paid'
-                : 'Pending',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          ResponsivePair(
-            breakpoint: 320,
-            first: _MoneyFact('Received', sale.paidMinor, sale.draft.currency),
-            second: _MoneyFact('Remaining', remaining, sale.draft.currency),
-          ),
-          const SizedBox(height: 16),
-          DetailHint(
-            sale.paymentStatus == PaymentStatus.paid
-                ? 'This bill is fully paid. Payment was confirmed by the owner.'
-                : sale.paymentStatus == PaymentStatus.partial
-                ? 'Advance received. The remaining balance is still due.'
-                : 'Payment has not been confirmed yet. The requested QR amount is not treated as paid until the owner records it.',
-          ),
           const SizedBox(height: 18),
           if (sale.payments.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -779,7 +791,6 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
                           : () => _savePdf(settings),
                       icon: Icons.download_outlined,
                       label: 'Save PDF',
-                      filename: 'hyner-original-${sale.id}.pdf',
                     ),
                     SizedBox(
                       width: double.infinity,
@@ -817,7 +828,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
           for (final line in sale.draft.lines) ...[
             Text(line.name, style: theme.textTheme.titleMedium),
             const SizedBox(height: 6),
-            Text(line.sku),
+            Text(line.inventorySku ?? line.sku),
             for (final parameter in line.parameters)
               Padding(
                 padding: const EdgeInsets.only(top: 6),

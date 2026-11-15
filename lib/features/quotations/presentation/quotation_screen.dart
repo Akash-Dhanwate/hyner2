@@ -16,9 +16,10 @@ import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../pricing/application/calculator_session.dart';
 import '../../pricing/application/estimate_builder.dart';
-import '../../pricing/presentation/workspace_quickprice_screen.dart';
+import '../../pricing/application/pricing_workspace_provider.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../../sales/data/bill_pdf_actions.dart';
+import '../../sales/data/bill_pdf_filename.dart';
 import '../../sales/data/bill_pdf_service.dart';
 import '../../sales/domain/sale.dart';
 import '../../settings/domain/payment_settings.dart';
@@ -413,7 +414,7 @@ class _QuotationDocumentState extends ConsumerState<QuotationDocument> {
     try {
       final bytes = await _bytes(settings);
       if (!mounted || !_current) return;
-      final name = 'hyner-quotation-${widget.quote.id}.pdf';
+      final name = quotationPdfFilename(widget.quote);
       if (action == 'save') {
         final saved = await BillPdfActions.save(bytes, name);
         if (mounted && _current && saved != null) {
@@ -528,7 +529,7 @@ class _QuotationDocumentState extends ConsumerState<QuotationDocument> {
                     onPressed: _busy ? null : () => _action('save', settings),
                     icon: Icons.download_outlined,
                     label: 'Download PDF',
-                    filename: 'hyner-quotation-${quote.id}.pdf',
+                    filename: quotationPdfFilename(quote),
                   ),
                   if (!kIsWeb &&
                       defaultTargetPlatform == TargetPlatform.android)

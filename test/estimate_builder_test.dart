@@ -6,6 +6,7 @@ import 'package:hyner/core/storage/pricing_database.dart' show PricingDatabase;
 import 'package:hyner/features/pricing/application/calculator_session.dart';
 import 'package:hyner/features/pricing/application/estimate_builder.dart';
 import 'package:hyner/features/pricing/application/product_setup.dart';
+import 'package:hyner/features/pricing/application/simple_calculator.dart';
 import 'package:hyner/features/pricing/application/workspace.dart';
 import 'package:hyner/features/pricing/data/device_workspace.dart';
 import 'package:hyner/features/pricing/data/preview_workspace.dart';
@@ -31,11 +32,15 @@ void main() {
     String width = '3',
     String quantity = '1',
     Currency? currency,
+    String? inventorySku,
   }) {
+    final configured = f
+        .setup(kind, name: name, rate: rate)
+        .compile(businessId, currency ?? f.currency);
     session.select(
-      f
-          .setup(kind, name: name, rate: rate)
-          .compile(businessId, currency ?? f.currency),
+      inventorySku == null
+          ? configured
+          : configured.withInventorySku(inventorySku),
     );
     if (kind == 'area') {
       session.change('height', 'text', height);
@@ -95,6 +100,46 @@ void main() {
     );
     expect(estimate.toCheckoutSeed('owner').operationId, seed.operationId);
   });
+
+  test(
+    'inventory link survives estimate persistence and checkout conversion',
+    () {
+      final line = capture(inventorySku: 'DOOR_STOCK');
+      final reopened = EstimateLine.fromJson(line.toJson());
+      expect(reopened.product.inventorySku, 'DOOR_STOCK');
+      expect(reopened.toSaleLine().stockSku, 'DOOR_STOCK');
+      expect(reopened.toSaleLine().stockTracked, isTrue);
+    },
+  );
+
+  test(
+    'selected calculator variety carries its own SKU into bill checkout',
+    () {
+      final setup = f.setup('area', name: 'PVC Door', rate: '100');
+      configureSimpleVarieties(setup, [
+        {'id': 'solid-rate', 'name': 'Solid', 'amount': '120'},
+        {'id': 'grooved-rate', 'name': 'Grooved', 'amount': '160'},
+      ]);
+      final base = setup.compile('shop', f.currency);
+      final product = base.withInventoryVariants({
+        'solid-rate': 'SKU_SOLID',
+        'grooved-rate': 'SKU_GROOVED',
+      }, primarySku: 'SKU_SOLID');
+      session.select(product);
+      session.change(simpleVarietyField, 'choice', 'Grooved');
+      session.change('height', 'text', '7');
+      session.change('width', 'text', '3');
+
+      final line = EstimateLine.capture(session: session, profileId: 'doors');
+      expect(line.toSaleLine().inventorySku, 'SKU_GROOVED');
+      final restored = EstimateLine.fromJson(line.toJson());
+      expect(restored.toSaleLine().inventorySku, 'SKU_GROOVED');
+      expect(restored.product.inventorySkuByRateId, {
+        'solid-rate': 'SKU_SOLID',
+        'grooved-rate': 'SKU_GROOVED',
+      });
+    },
+  );
 
   test(
     'snapshot survives a later publication and editing uses the captured rule',

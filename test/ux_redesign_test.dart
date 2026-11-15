@@ -107,6 +107,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final workspace = createPreviewWorkspace();
+    final auth = FakeAuth();
+    addTearDown(auth.close);
     final setup = quickProduct('doors', name: 'Door');
     setup.rows('rates').first['amount'] = '150';
     final product = setup.compile(workspace.businessId, Currency('INR', 2));
@@ -121,10 +123,17 @@ void main() {
     );
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(
-      MaterialApp(
-        navigatorKey: navigator,
-        theme: hynerTheme(Brightness.light),
-        home: const Scaffold(body: Text('Home')),
+      ProviderScope(
+        overrides: [
+          dependenciesProvider.overrideWithValue(
+            testDependencies(auth, FakeProfiles()),
+          ),
+        ],
+        child: MaterialApp(
+          navigatorKey: navigator,
+          theme: hynerTheme(Brightness.light),
+          home: const Scaffold(body: Text('Home')),
+        ),
       ),
     );
     navigator.currentState!.push(

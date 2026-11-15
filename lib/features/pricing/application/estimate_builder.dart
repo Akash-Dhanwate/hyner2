@@ -70,14 +70,30 @@ final class EstimateLine {
   Map<String, dynamic> get calculatorState =>
       _freezeMap(jsonObject(_calculatorJson));
 
-  SaleLine toSaleLine() => SaleLine(
-    sku: 'QP_${id.toUpperCase()}',
-    name: product.name,
-    unitPriceMinor: pricing.unitPriceMinor,
-    quantity: pricing.quantity,
-    parameters: parameters,
-    pricing: pricing,
-  );
+  SaleLine toSaleLine() {
+    final savedProduct = product;
+    var inventorySku = savedProduct.inventorySku;
+    try {
+      final selectedRate = pricing.result.rule.rateLookup.resolve(
+        'base',
+        pricing.result.inputs,
+      );
+      inventorySku =
+          savedProduct.inventorySkuByRateId[selectedRate.id] ?? inventorySku;
+    } on StateError {
+      // Keep the legacy single-SKU link for older calculators without a
+      // selectable base-rate row.
+    }
+    return SaleLine(
+      sku: 'QP_${id.toUpperCase()}',
+      name: savedProduct.name,
+      unitPriceMinor: pricing.unitPriceMinor,
+      quantity: pricing.quantity,
+      inventorySku: inventorySku,
+      parameters: parameters,
+      pricing: pricing,
+    );
+  }
 
   EstimateLine _withId(String value) => EstimateLine._(
     id: value,
