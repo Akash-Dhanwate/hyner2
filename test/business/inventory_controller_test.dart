@@ -68,6 +68,33 @@ void main() {
         .refresh(query: const InventoryQuery(archived: true));
     expect(container.read(inventoryProvider).products, isEmpty);
   });
+  test(
+    'renaming a filtered product clears the stale search so it stays visible',
+    () async {
+      inventory.products(testIdentity.uid)['TEST-1'] = inventoryFixture(
+        name: 'Old name',
+      );
+      await container
+          .read(inventoryProvider.notifier)
+          .refresh(query: const InventoryQuery(search: 'Old'));
+      expect(container.read(inventoryProvider).products, hasLength(1));
+
+      inventory.products(testIdentity.uid)['TEST-1'] = inventoryFixture(
+        name: 'New name',
+        revision: 2,
+      );
+      container
+          .read(inventoryProvider.notifier)
+          .didWrite(testIdentity.uid, 'TEST-1', clearSearch: true);
+      await flush();
+
+      expect(container.read(inventoryProvider).query.search, isEmpty);
+      expect(
+        container.read(inventoryProvider).products.single.name,
+        'New name',
+      );
+    },
+  );
   test('older search results cannot replace a newer query', () async {
     final old = Completer<InventoryPage>();
     inventory.pendingList = old;

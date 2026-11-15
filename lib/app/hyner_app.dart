@@ -11,8 +11,14 @@ class HynerApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
     title: 'Hyner',
     debugShowCheckedModeBanner: false,
-    theme: HynerTheme.build(Brightness.light),
-    darkTheme: HynerTheme.build(Brightness.dark),
+    theme: HynerTheme.build(
+      Brightness.light,
+      preset: ref.watch(themePresetProvider),
+    ),
+    darkTheme: HynerTheme.build(
+      Brightness.dark,
+      preset: ref.watch(themePresetProvider),
+    ),
     themeMode: ref.watch(themeControllerProvider),
     themeAnimationDuration:
         (MediaQuery.maybeOf(context)?.disableAnimations ??

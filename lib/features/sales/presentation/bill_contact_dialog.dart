@@ -81,7 +81,11 @@ class _BillContactDialogState extends ConsumerState<BillContactDialog> {
     return PopScope(
       canPop: !_saving,
       child: AlertDialog(
-        title: const Text('Edit bill customer'),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: Text(
+          'Edit bill customer',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         content: SingleChildScrollView(
           child: Form(
             key: _form,
@@ -139,7 +143,7 @@ class _BillContactDialogState extends ConsumerState<BillContactDialog> {
           FilledButton(
             key: const Key('save-bill-contact'),
             onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save customer details'),
+            child: Text(_saving ? 'Saving…' : 'Save changes'),
           ),
         ],
       ),

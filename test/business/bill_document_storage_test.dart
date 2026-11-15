@@ -329,7 +329,7 @@ void main() {
     final snapshot = jsonDecode(
       jsonEncode(await store.exportFor(uid)),
     ) as Map<String, dynamic>;
-    expect(snapshot['schemaVersion'], 10);
+    expect(snapshot['schemaVersion'], 11);
     final tables = snapshot['tables'] as Map;
     expect(
       (tables['bill_documents'] as List).single['duplicatePdf'],

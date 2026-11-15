@@ -11,20 +11,9 @@ import '../../../core/errors/app_failure.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../sales/presentation/sales_controller.dart';
 import '../application/estimate_builder.dart';
-import '../application/open_workspace.dart';
+import '../application/pricing_workspace_provider.dart';
 import '../application/workspace.dart';
 import 'quickprice_screen.dart';
-
-final pricingWorkspaceProvider =
-    FutureProvider.family<QuickPriceWorkspace, String?>((ref, uid) async {
-      final workspace = await openQuickPriceWorkspace(accountUid: uid);
-      if (!ref.mounted) {
-        await workspace.close();
-        throw StateError('Workspace closed');
-      }
-      ref.onDispose(() => unawaited(workspace.close()));
-      return workspace;
-    });
 
 /// Device pricing from earlier APKs stays available. Account pricing uses its
 /// own local scope and never grants cloud business membership.
@@ -42,6 +31,10 @@ class WorkspaceQuickPriceScreen extends ConsumerWidget {
             key: ValueKey(uid),
             workspace: workspace,
             onCheckout: (estimate) => _continueToSales(context, ref, estimate),
+            onQuotation: (estimate) async {
+              await _continueToSales(context, ref, estimate, quotation: true);
+            },
+            onQuotationHistory: () => context.push<void>('/quotations'),
             onExit: () {
               final router = GoRouter.of(context);
               if (router.canPop()) {
@@ -83,8 +76,9 @@ class WorkspaceQuickPriceScreen extends ConsumerWidget {
 Future<String?> _continueToSales(
   BuildContext context,
   WidgetRef ref,
-  QuickPriceEstimate estimate,
-) async {
+  QuickPriceEstimate estimate, {
+  bool quotation = false,
+}) async {
   var profile = ref.read(sessionProvider).profile;
   if (profile == null) {
     if (ref.read(dependenciesProvider).auth is! DeviceAccess) {
@@ -95,9 +89,13 @@ Future<String?> _continueToSales(
     final useDevice = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Create a bill on this device?'),
+        title: Text(
+          quotation
+              ? 'Create a quotation on this device?'
+              : 'Create a bill on this device?',
+        ),
         content: const Text(
-          'Your customer and bill will be saved in your local business workspace.',
+          'The document will be saved in your local business workspace.',
         ),
         actions: [
           TextButton(
@@ -177,7 +175,7 @@ Future<String?> _continueToSales(
   try {
     await Future.any<void>([
       context.push<void>(
-        '/sales/quickprice/${Uri.encodeComponent(estimate.id)}',
+        '${quotation ? '/quotations' : '/sales'}/quickprice/${Uri.encodeComponent(estimate.id)}',
       ),
       returned.future,
     ]);
@@ -186,6 +184,7 @@ Future<String?> _continueToSales(
     if (!returned.isCompleted) returned.complete();
   }
   if (!context.mounted || ref.read(inventoryUidProvider) != uid) return null;
+  if (quotation) return null;
   try {
     return (await ref
             .read(salesRepositoryProvider)
@@ -204,10 +203,14 @@ class _ScopedPricingNavigator extends StatefulWidget {
     required this.workspace,
     required this.onExit,
     required this.onCheckout,
+    required this.onQuotation,
+    required this.onQuotationHistory,
   });
   final QuickPriceWorkspace workspace;
   final VoidCallback onExit;
   final Future<String?> Function(QuickPriceEstimate estimate) onCheckout;
+  final Future<void> Function(QuickPriceEstimate estimate) onQuotation;
+  final VoidCallback onQuotationHistory;
   @override
   State<_ScopedPricingNavigator> createState() =>
       _ScopedPricingNavigatorState();
@@ -226,6 +229,8 @@ class _ScopedPricingNavigatorState extends State<_ScopedPricingNavigator> {
           workspace: widget.workspace,
           onExit: widget.onExit,
           onCheckout: widget.onCheckout,
+          onQuotation: widget.onQuotation,
+          onQuotationHistory: widget.onQuotationHistory,
         ),
       ),
     ),

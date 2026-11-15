@@ -56,6 +56,17 @@ class LocalSalesRepository implements SalesRepository {
     );
   }
 
+  @override
+  Future<List<Sale>> recent(String uid) async {
+    _checkOwner(uid);
+    final db = await _store.databaseFor(uid);
+    return (await db.query(
+      'sales',
+      orderBy: 'createdAt DESC, id DESC',
+      limit: 3,
+    )).map(_saleFromRow).toList();
+  }
+
   Future<SalesPage> _search(String uid, String text, SalesCursor? after) async {
     _checkOwner(uid);
     if (text.length > 120) {
@@ -81,7 +92,7 @@ class LocalSalesRepository implements SalesRepository {
                 cursor.id,
               ],
         orderBy: 'createdAt DESC, id DESC',
-        limit: 64,
+        limit: 32,
       );
       for (final row in rows) {
         if (query.contactMatches(
@@ -102,7 +113,7 @@ class LocalSalesRepository implements SalesRepository {
           );
         }
       }
-      if (rows.length < 64) return SalesPage(matches, null);
+      if (rows.length < 32) return SalesPage(matches, null);
       cursor = SalesCursor(
         DateTime.parse(rows.last['createdAt']! as String),
         rows.last['id']! as String,
@@ -304,6 +315,20 @@ class LocalSalesRepository implements SalesRepository {
       limit: 1,
     );
     if (rows.isEmpty) {
+      final deleted = await db.query(
+        'settings',
+        columns: ['key'],
+        where: 'key = ?',
+        whereArgs: ['bill-deleted/$id'],
+        limit: 1,
+      );
+      if (deleted.isNotEmpty) {
+        throw const AppFailure(
+          FailureKind.invalidData,
+          'This bill was deleted. Start a new estimate or bill for another order.',
+          reference: 'sales/deleted',
+        );
+      }
       throw const AppFailure(
         FailureKind.invalidData,
         'This sale could not be found. Refresh sales.',
@@ -323,6 +348,18 @@ class LocalSalesRepository implements SalesRepository {
     final db = await _store.databaseFor(uid);
     final now = DateTime.now().toUtc();
     await db.transaction((tx) async {
+      final deleted = await tx.query(
+        'settings',
+        columns: ['key'],
+        where: 'key = ?',
+        whereArgs: ['bill-deleted/$id'],
+        limit: 1,
+      );
+      if (deleted.isNotEmpty) {
+        throw inventoryInvalid(
+          'This bill was deleted. Start a new estimate or bill for another order.',
+        );
+      }
       final existing = await tx.query(
         'sales',
         where: 'id = ?',
@@ -354,25 +391,30 @@ class LocalSalesRepository implements SalesRepository {
         at: now,
       );
 
+      final savedLines = <Map<String, Object?>>[];
       for (var index = 0; index < draft.lines.length; index++) {
         final line = draft.lines[index];
-        if (!line.stockTracked) continue;
+        if (!line.stockTracked) {
+          savedLines.add(_storedLine(line));
+          continue;
+        }
+        final stockSku = line.stockSku!;
         final rows = await tx.query(
           'products',
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
           limit: 1,
         );
         if (rows.isEmpty) {
           throw inventoryInvalid(
-            'Product ${line.sku} is no longer in inventory. Refresh the bill.',
+            'Linked inventory product $stockSku is no longer available. Refresh the bill.',
           );
         }
         final row = rows.single;
         final product = _productFromRow(row);
         if (product.archived || product.currency != draft.currency) {
           throw inventoryInvalid(
-            'Product ${line.sku} is unavailable for this bill. Refresh the bill.',
+            'Linked inventory product ${product.name} is unavailable for this bill. Refresh the bill.',
           );
         }
         if (product.quantity < line.quantity) {
@@ -392,11 +434,11 @@ class LocalSalesRepository implements SalesRepository {
             'updatedAt': now.toIso8601String(),
           },
           where: 'sku = ?',
-          whereArgs: [line.sku],
+          whereArgs: [stockSku],
         );
         await tx.insert('movements', {
           'id': movementId,
-          'sku': line.sku,
+          'sku': stockSku,
           'type': 'sale',
           'beforeQuantity': product.quantity,
           'afterQuantity': nextQuantity,
@@ -406,25 +448,23 @@ class LocalSalesRepository implements SalesRepository {
           'revision': revision,
           'createdAt': now.toIso8601String(),
         });
+        savedLines.add(
+          _storedLine(
+            line,
+            // QuickPrice uses the inventory item's cost at checkout as an
+            // immutable bill snapshot. Its customer price remains untouched.
+            unitCostMinor: line.pricing == null
+                ? line.unitCostMinor
+                : product.costMinor,
+            inventoryCostKnown: line.pricing != null && product.costMinor > 0,
+          ),
+        );
       }
 
       await tx.insert('sales', {
         'id': id,
         'currency': draft.currency,
-        'lines': jsonEncode([
-          for (final line in draft.lines)
-            {
-              'sku': line.sku,
-              'name': line.name,
-              'unitPriceMinor': line.unitPriceMinor,
-              'unitCostMinor': line.unitCostMinor,
-              'quantity': line.quantity,
-              if (line.pricing != null) 'pricing': line.pricing!.toJson(),
-              'parameters': [
-                for (final parameter in line.parameters) parameter.toMap(),
-              ],
-            },
-        ]),
+        'lines': jsonEncode(savedLines),
         'customerId': customer.id,
         'customerName': draft.customerName,
         'customerPhone': draft.customerPhone,
@@ -437,6 +477,106 @@ class LocalSalesRepository implements SalesRepository {
         'createdAt': now.toIso8601String(),
         'paidAt': null,
       });
+    });
+  }
+
+  @override
+  Future<void> delete(
+    String uid,
+    String id, {
+    required int expectedPaidMinor,
+  }) async {
+    _checkOwner(uid);
+    if (!InventoryCodec.validOperationId(id)) {
+      throw inventoryInvalid('Invalid bill reference.');
+    }
+    final db = await _store.databaseFor(uid);
+    await db.transaction((tx) async {
+      final rows = await tx.query('sales', where: 'id = ?', whereArgs: [id]);
+      if (rows.isEmpty) {
+        final deleted = await tx.query(
+          'settings',
+          columns: ['key'],
+          where: 'key = ?',
+          whereArgs: ['bill-deleted/$id'],
+          limit: 1,
+        );
+        if (deleted.isNotEmpty) return;
+        throw inventoryInvalid('This bill could not be found. Refresh sales.');
+      }
+      final prior = _saleFromRow(rows.single);
+      if (prior.paidMinor != expectedPaidMinor) {
+        throw inventoryInvalid(
+          'Payments on this bill changed. Reopen the bill before deleting it.',
+        );
+      }
+      final now = _clock().toUtc().toIso8601String();
+      for (var index = 0; index < prior.draft.lines.length; index++) {
+        final line = prior.draft.lines[index];
+        if (!line.stockTracked) continue;
+        final stockSku = line.stockSku!;
+        final products = await tx.query(
+          'products',
+          where: 'sku = ?',
+          whereArgs: [stockSku],
+          limit: 1,
+        );
+        if (products.isEmpty) {
+          throw inventoryInvalid(
+            'Inventory product $stockSku is missing. Restore it before deleting this bill.',
+          );
+        }
+        final product = _productFromRow(products.single);
+        final quantity = product.quantity + line.quantity;
+        final revision = product.revision + 1;
+        if (quantity > maxStock || revision > maxStock) {
+          throw inventoryInvalid(
+            'Stock for $stockSku cannot be restored within the inventory limits. The bill has not been deleted.',
+          );
+        }
+        final movementId = _localId();
+        await tx.update(
+          'products',
+          {
+            'quantity': quantity,
+            'archived': 0,
+            'revision': revision,
+            'lastMovementId': movementId,
+            'updatedAt': now,
+          },
+          where: 'sku = ?',
+          whereArgs: [stockSku],
+        );
+        await tx.insert('movements', {
+          'id': movementId,
+          'sku': stockSku,
+          'type': 'adjustment',
+          'beforeQuantity': product.quantity,
+          'afterQuantity': quantity,
+          'delta': line.quantity,
+          'reason': 'Deleted bill $id: stock restored',
+          'actorUid': uid,
+          'revision': revision,
+          'createdAt': now,
+        });
+      }
+      // Keep stock history and an account-local tombstone. Retries must neither
+      // restore stock twice nor recreate a deleted QuickPrice checkout.
+      await tx.insert('settings', {
+        'key': 'bill-deleted/$id',
+        'value': jsonEncode({
+          'version': 1,
+          'billId': id,
+          'deletedAt': now,
+          'createdAt': prior.createdAt.toUtc().toIso8601String(),
+          'currency': prior.draft.currency,
+          'totalMinor': prior.draft.totalMinor,
+          'paidMinor': prior.paidMinor,
+        }),
+      });
+      await tx.delete('bill_documents', where: 'saleId = ?', whereArgs: [id]);
+      // Payments and follow-up scheduling are stored on the sale itself.
+      await tx.delete('sales', where: 'id = ?', whereArgs: [id]);
     });
   }
 
@@ -541,7 +681,12 @@ Sale _saleFromRow(Map<String, Object?> row) {
         raw['unitCostMinor'] != null && raw['unitCostMinor'] is! int ||
         raw['quantity'] is! int ||
         raw['pricing'] != null && raw['pricing'] is! Map<String, dynamic> ||
-        raw['pricing'] != null && raw['unitCostMinor'] != 0 ||
+        raw['pricing'] != null &&
+            raw['unitCostMinor'] != 0 &&
+            raw['inventorySku'] == null ||
+        raw['inventorySku'] != null && raw['inventorySku'] is! String ||
+        raw['inventoryCostKnown'] != null &&
+            raw['inventoryCostKnown'] is! bool ||
         raw['parameters'] != null &&
             (raw['parameters'] is! List ||
                 (raw['parameters'] as List).any(
@@ -564,6 +709,8 @@ Sale _saleFromRow(Map<String, Object?> row) {
             : SalePriceSnapshot.fromJson(
                 raw['pricing'] as Map<String, dynamic>,
               ),
+        inventorySku: raw['inventorySku'] as String?,
+        inventoryCostKnown: raw['inventoryCostKnown'] as bool? ?? false,
         parameters: [
           for (final entry in (raw['parameters'] as List? ?? const []))
             ProductParameter.fromMap(entry as Map<dynamic, dynamic>),
@@ -638,6 +785,23 @@ Sale _saleFromRow(Map<String, Object?> row) {
         : DateTime.parse(row['followupAt']! as String),
   );
 }
+
+Map<String, Object?> _storedLine(
+  SaleLine line, {
+  int? unitCostMinor,
+  bool? inventoryCostKnown,
+}) => {
+  'sku': line.sku,
+  'name': line.name,
+  'unitPriceMinor': line.unitPriceMinor,
+  'unitCostMinor': unitCostMinor ?? line.unitCostMinor,
+  'quantity': line.quantity,
+  if (line.pricing != null) 'pricing': line.pricing!.toJson(),
+  if (line.inventorySku != null) 'inventorySku': line.inventorySku,
+  if (line.inventorySku != null)
+    'inventoryCostKnown': inventoryCostKnown ?? line.inventoryCostKnown,
+  'parameters': [for (final parameter in line.parameters) parameter.toMap()],
+};
 
 Product _productFromRow(Map<String, Object?> row) {
   final product = Product(

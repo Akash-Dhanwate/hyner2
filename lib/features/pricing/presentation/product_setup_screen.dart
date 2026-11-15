@@ -19,6 +19,7 @@ class ProductSetupScreen extends StatefulWidget {
     required this.storageKey,
     required this.currency,
     required this.categories,
+    this.inventoryAvailable = true,
     required this.onSave,
   });
   final QuickPriceWorkspace workspace;
@@ -26,6 +27,7 @@ class ProductSetupScreen extends StatefulWidget {
   final String storageKey;
   final Currency currency;
   final List<PricingCategory> categories;
+  final bool inventoryAvailable;
   final Future<void> Function(UniversalProduct, ProductSetup) onSave;
   @override
   State<ProductSetupScreen> createState() => _ProductSetupScreenState();
@@ -48,6 +50,26 @@ class _ProductSetupScreenState extends State<ProductSetupScreen> {
     for (final r in setup.rows('rates'))
       'rate:${r['key']}': 'Rate: ${r['key']}',
   };
+  List<({String rateId, String name})> get _inventoryVariants {
+    final fields = {
+      for (final field in setup.rows('fields'))
+        field['id'] as String: field['label'] as String,
+    };
+    return [
+      for (final rate in setup.rows('rates'))
+        if (rate['key'] == 'base' && (rate['selectors'] as Map).isNotEmpty)
+          (
+            rateId: rate['id'] as String,
+            name: (rate['selectors'] as Map).entries
+                .map(
+                  (entry) =>
+                      '${fields[entry.key] ?? entry.key}: ${entry.value}',
+                )
+                .join(' / '),
+          ),
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -373,6 +395,84 @@ class _ProductSetupScreenState extends State<ProductSetupScreen> {
           ),
         ],
       ),
+    FormSection(
+      'Inventory',
+      subtitle: 'Track this calculator product in Inventory. Stock counts whole items; measurements do not convert into stock units.',
+      children: [
+        if (!widget.inventoryAvailable)
+          const MessageLine(
+            'Open your business workspace to link calculator products with Inventory.',
+          )
+        else ...[
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Track stock in Inventory'),
+            value: data['inventoryTracking'] == true,
+            onChanged: (data['inventorySku'] as String? ?? '').isNotEmpty
+                ? null
+                : (value) => _set('inventoryTracking', value),
+          ),
+          if (data['inventoryTracking'] == true) ...[
+            if ((data['inventorySku'] as String? ?? '').isEmpty)
+              _text(
+                'inventoryOpeningStock',
+                'Opening stock',
+                numeric: true,
+                helper: 'Default 100. Change this to the quantity on hand.',
+              )
+            else
+              MessageLine(
+                'Current stock is managed in Inventory. SKU: ${data['inventorySku']}',
+              ),
+            _text(
+              'inventoryReorderLevel',
+              'Low-stock alert at',
+              numeric: true,
+              helper: 'Default 10 units.',
+            ),
+            _text(
+              'inventoryCost',
+              'Purchase cost per stock unit',
+              numeric: true,
+              helper: 'Used for inventory and cost reports.',
+            ),
+            if (_inventoryVariants.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Variety purchase costs',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const Text('Leave blank to use the product purchase cost above.'),
+              for (final variant in _inventoryVariants)
+                ValueField(
+                  key: ValueKey('inventory-cost-${variant.rateId}'),
+                  label: 'Purchase cost · ${variant.name}',
+                  numeric: true,
+                  value:
+                      Map<String, String>.from(
+                        data['inventoryVariantCosts'] as Map? ?? const {},
+                      )[variant.rateId] ??
+                      '',
+                  prefixIcon: Icons.shopping_cart_outlined,
+                  onChanged: (value) {
+                    final costs = Map<String, String>.from(
+                      data['inventoryVariantCosts'] as Map? ?? const {},
+                    );
+                    costs[variant.rateId] = value;
+                    _set('inventoryVariantCosts', costs);
+                  },
+                ),
+            ],
+            _text(
+              'inventoryPrice',
+              'Inventory selling price per stock unit',
+              numeric: true,
+              helper: 'Default Inventory price only. This does not change the calculator formula.',
+            ),
+          ],
+        ],
+      ],
+    ),
     FormSection(
       'Seller inputs',
       subtitle: 'These fields appear automatically in QuickPrice. Use matching variable IDs to preserve measurements when switching products.',

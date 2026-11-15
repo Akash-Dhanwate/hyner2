@@ -90,7 +90,7 @@ void main() {
     'welcome navigates to Google Sign-In and test authentication opens dashboard',
     (tester) async {
       final container = await mount(tester);
-      expect(find.text('Prices, stock and bills.'), findsOneWidget);
+      expect(find.text('Welcome to Hyner'), findsOneWidget);
       await tester.ensureVisible(find.text('Sign in or create account'));
       await tester.tap(find.text('Sign in or create account'));
       await tester.pumpAndSettle();
@@ -110,7 +110,7 @@ void main() {
       final router = container.read(routerProvider);
       for (final entry in [
         ('/inventory', 'No products yet'),
-        ('/sales', 'No products added yet.'),
+        ('/sales', 'Recent bills'),
         ('/sales/history', 'No sales yet'),
         ('/purchases', 'Record purchase'),
         ('/customers', 'Add customer'),
@@ -119,6 +119,8 @@ void main() {
           'View sales, purchases, balances, and product performance.',
         ),
         ('/settings', 'Settings'),
+        ('/help', 'How do I...?'),
+        ('/getting-started', 'Get started'),
         ('/profile', 'Profile'),
         ('/dashboard', 'Hello, Alice.'),
       ]) {
@@ -166,20 +168,39 @@ void main() {
   });
 
   testWidgets(
+    'mobile navigation exposes five primary destinations and More retains history',
+    (tester) async {
+      final container = await mount(tester, restored: true);
+      final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(bar.destinations, hasLength(5));
+      for (final label in ['Home', 'Price', 'Bill', 'Stock', 'More']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
+      await reveal(tester, find.text('Bill history'));
+      await tester.tap(find.text('Bill history'));
+      await tester.pumpAndSettle();
+      expect(container.read(routerProvider).state.uri.path, '/sales/history');
+      expect(find.text('Sales history'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'system Back retraces sections instead of exiting the workspace',
     (tester) async {
       final container = await mount(tester, restored: true);
       final router = container.read(routerProvider);
-      await tester.tap(find.text('Inventory').last);
+      await tester.tap(find.text('Stock').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sales').last);
+      await tester.tap(find.text('Bill').last);
       await tester.pumpAndSettle();
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
       expect(find.text('No products yet'), findsOneWidget);
       expect(
         tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-        1,
+        3,
       );
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
@@ -194,7 +215,7 @@ void main() {
     tester,
   ) async {
     final container = await mount(tester, restored: true);
-    await tester.tap(find.text('Inventory').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
@@ -213,7 +234,7 @@ void main() {
   ) async {
     final container = await mount(tester, restored: true);
     final router = container.read(routerProvider);
-    await tester.tap(find.text('Inventory').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
@@ -237,7 +258,7 @@ void main() {
   ) async {
     final container = await mount(tester, restored: true);
     final router = container.read(routerProvider);
-    await tester.tap(find.text('Inventory').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Your profile'));
     await tester.pumpAndSettle();
@@ -261,7 +282,7 @@ void main() {
   ) async {
     final container = await mount(tester, restored: true);
     final router = container.read(routerProvider);
-    await tester.tap(find.text('Sales').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
@@ -280,16 +301,16 @@ void main() {
     expect(router.state.uri.path, '/settings');
     expect(await tester.binding.handlePopRoute(), isTrue);
     await tester.pumpAndSettle();
-    expect(router.state.uri.path, '/sales');
+    expect(router.state.uri.path, '/inventory');
   });
 
   testWidgets(
     'selecting the current destination does not add duplicate pages',
     (tester) async {
       final container = await mount(tester, restored: true);
-      await tester.tap(find.text('Inventory').last);
+      await tester.tap(find.text('Stock').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Inventory').last);
+      await tester.tap(find.text('Stock').last);
       await tester.pumpAndSettle();
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
@@ -310,17 +331,20 @@ void main() {
   ) async {
     final container = await mount(tester, restored: true);
     final router = container.read(routerProvider);
-    await tester.tap(find.text('Inventory').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sales').last);
+    await tester.tap(find.text('Bill').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsNothing);
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
     expect(find.text('Hello, Alice.'), findsOneWidget);
     expect(router.canPop(), isFalse);
-    await tester.tap(find.text('Inventory').last);
+    await tester.tap(find.text('Stock').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sales').last);
+    await tester.tap(find.text('Bill').last);
     await tester.pumpAndSettle();
     router.push('/reports');
     await tester.pumpAndSettle();
@@ -339,9 +363,9 @@ void main() {
       size: const Size(900, 900),
     );
     final router = container.read(routerProvider);
-    await tester.tap(find.widgetWithText(ListTile, 'Inventory').first);
+    await tester.tap(find.widgetWithText(ListTile, 'Stock').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'Sales').first);
+    await tester.tap(find.widgetWithText(ListTile, 'Bill').first);
     await tester.pumpAndSettle();
     expect(await tester.binding.handlePopRoute(), isTrue);
     await tester.pumpAndSettle();
@@ -368,9 +392,9 @@ void main() {
     (tester) async {
       final container = await mount(tester, restored: true);
       final router = container.read(routerProvider);
-      await tester.tap(find.text('Inventory').last);
+      await tester.tap(find.text('Stock').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sales').last);
+      await tester.tap(find.text('Bill').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Your profile'));
       await tester.pumpAndSettle();

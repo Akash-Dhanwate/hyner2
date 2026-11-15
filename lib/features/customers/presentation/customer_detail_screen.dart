@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -222,10 +224,13 @@ class _CustomerHistorySummary extends StatelessWidget {
           ),
           for (final currency in currencies) ...[
             const SizedBox(height: 8),
-            Text('Total billed: ${formatMoney(totals[currency]!, currency)}'),
-            Text(
+            FinancialAmount(
+              'Total billed: ${formatMoney(totals[currency]!, currency)}',
+            ),
+            FinancialAmount(
               'Paid: ${formatMoney(paid[currency]!, currency)} · '
               'Due: ${formatMoney(due[currency]!, currency)}',
+              compact: true,
             ),
           ],
           if (sales.isEmpty) ...[
@@ -249,9 +254,9 @@ class _CustomerBill extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        FinancialAmount(
           formatMoney(sale.draft.totalMinor, sale.draft.currency),
-          style: Theme.of(context).textTheme.titleMedium,
+          compact: true,
         ),
         Text('${saleDate(sale.createdAt)} · ${sale.draft.units} units'),
         Text(

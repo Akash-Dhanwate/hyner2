@@ -118,57 +118,53 @@ void main() {
 
   for (final size in [(280.0, 1.0), (320.0, 2.5), (390.0, 3.0), (760.0, 1.0)]) {
     testWidgets(
-      'dashboard metrics adapt without clipping at width ${size.$1} and text scale ${size.$2}',
+      'dashboard summary adapts without clipping at width ${size.$1} and text scale ${size.$2}',
       (tester) async {
         await mount(tester, width: size.$1, scale: size.$2);
-        final metrics = [
-          for (final name in ['customers', 'sales', 'revenue'])
-            find.byKey(ValueKey('dashboard-metric-$name')),
-        ];
-        final boxes = metrics.map(tester.getRect).toList();
-        final stack = size.$1 < 360 || size.$2 > 1.5;
-        if (stack) {
-          expect(boxes[0].bottom, lessThan(boxes[1].top));
-          expect(boxes[1].bottom, lessThan(boxes[2].top));
-        } else {
-          expect(boxes[0].top, boxes[1].top);
-          expect(boxes[1].top, boxes[2].top);
-          expect(boxes[0].right, lessThan(boxes[1].left));
-          expect(boxes[1].right, lessThan(boxes[2].left));
-        }
-        expect(boxes[0].width, closeTo(boxes[1].width, .01));
+        expect(find.text('Today’s billed sales'), findsOneWidget);
+        expect(find.text('Cost of items sold'), findsOneWidget);
+        expect(find.text('Gross profit before expenses'), findsOneWidget);
+        expect(find.text('Outstanding dues'), findsOneWidget);
         expect(find.text('INR 1234.56'), findsOneWidget);
         final dashboard = find.byType(DashboardScreen);
         expect(
           find.descendant(of: dashboard, matching: find.text('BUSINESS TOOLS')),
           findsNothing,
         );
-        expect(
-          find.widgetWithText(FilledButton, 'Open QuickPrice'),
-          findsOneWidget,
-        );
-        for (final label in ['Customers', 'Sales', 'Revenue']) {
-          final text = tester.widget<Text>(
-            find.descendant(of: dashboard, matching: find.text(label)),
-          );
-          expect(text.maxLines, isNull);
-          expect(text.overflow, isNull);
-        }
         final scroll = find
             .descendant(
               of: find.byType(CustomScrollView).last,
               matching: find.byType(Scrollable),
             )
             .first;
+        await tester.scrollUntilVisible(
+          find.text('New bill'),
+          200,
+          scrollable: scroll,
+        );
+        expect(find.text('New bill'), findsOneWidget);
+        expect(find.text('Quick price'), findsOneWidget);
+        for (final label in [
+          'Today’s billed sales',
+          'Cost of items sold',
+          'Gross profit before expenses',
+          'Outstanding dues',
+        ]) {
+          final text = tester.widget<Text>(
+            find.descendant(of: dashboard, matching: find.text(label)),
+          );
+          expect(text.maxLines, isNull);
+          expect(text.overflow, isNull);
+        }
         expect(find.byType(ActivityBarChart), findsNothing);
         await tester.scrollUntilVisible(
-          find.text('Activity details'),
+          find.text('Business summary'),
           300,
           scrollable: scroll,
         );
-        await tester.ensureVisible(find.text('Activity details'));
+        await tester.ensureVisible(find.text('Business summary'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Activity details'));
+        await tester.tap(find.text('Business summary'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byType(ActivityBarChart),
@@ -182,34 +178,21 @@ void main() {
           scrollable: scroll,
         );
         expect(find.byType(PaymentDonutChart), findsOneWidget);
-        expect(tester.takeException(), isNull);
+        final layoutException = tester.takeException();
+        expect(layoutException, isNull);
       },
     );
   }
 
   testWidgets(
-    'customer error does not turn valid sales and revenue into zero',
+    'dashboard sales and balances remain visible without customer-directory data',
     (tester) async {
       await mount(tester, customerError: true);
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('dashboard-value-customers')))
-            .data,
-        '—',
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('dashboard-value-sales')))
-            .data,
-        '7',
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('dashboard-value-revenue')))
-            .data,
-        'INR 1234.56',
-      );
-      expect(find.text('Customer count could not be loaded.'), findsOneWidget);
+      expect(find.text('Today’s billed sales'), findsOneWidget);
+      expect(find.text('Cost of items sold'), findsOneWidget);
+      expect(find.text('Gross profit before expenses'), findsOneWidget);
+      expect(find.text('Outstanding dues'), findsOneWidget);
+      expect(find.text('Customer count could not be loaded.'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

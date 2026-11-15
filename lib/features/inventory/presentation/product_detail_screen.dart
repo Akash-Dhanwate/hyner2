@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/app_failure.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../domain/inventory_repository.dart';
 import '../domain/product.dart';
 import 'inventory_controller.dart';
@@ -187,14 +188,17 @@ class _ProductDetailsState extends ConsumerState<_ProductDetails> {
     final p = widget.product;
     final theme = Theme.of(context);
     final localizations = MaterialLocalizations.of(context);
-    Widget fact(String label, String value) => Padding(
+    Widget fact(String label, String value, {bool money = false}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: theme.textTheme.labelMedium),
           const SizedBox(height: 4),
-          SelectableText(value, style: theme.textTheme.bodyLarge),
+          if (money)
+            FinancialAmount(value, selectable: true)
+          else
+            SelectableText(value, style: theme.textTheme.bodyLarge),
         ],
       ),
     );
@@ -254,13 +258,14 @@ class _ProductDetailsState extends ConsumerState<_ProductDetails> {
                               icon: const Icon(Icons.swap_vert_rounded),
                               label: const Text('Adjust stock'),
                             ),
-                            OutlinedButton(
+                            OutlinedButton.icon(
                               onPressed: widget.busy
                                   ? null
                                   : () => context.push<void>(
                                       '/inventory/${p.sku}/edit',
                                     ),
-                              child: const Text('Edit product'),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('Edit product'),
                             ),
                           ],
                           OutlinedButton(
@@ -298,10 +303,12 @@ class _ProductDetailsState extends ConsumerState<_ProductDetails> {
                       fact(
                         'Cost price / unit',
                         formatMoney(p.costMinor, p.currency),
+                        money: true,
                       ),
                       fact(
                         'Selling price / unit',
                         formatMoney(p.priceMinor, p.currency),
+                        money: true,
                       ),
                       fact('Low-stock threshold', '${p.reorderLevel} units'),
                       fact(

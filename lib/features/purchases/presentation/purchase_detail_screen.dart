@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -42,9 +44,14 @@ class PurchaseDetailScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true ||
+        !context.mounted ||
+        ref.read(inventoryUidProvider) != uid) {
+      return;
+    }
     try {
       await ref.read(purchaseRepositoryProvider).markPaid(uid, purchase.id);
+      if (!context.mounted || ref.read(inventoryUidProvider) != uid) return;
       unawaited(
         LocalNotificationService.instance.activity(
           title: 'Supplier payment recorded',
@@ -68,13 +75,17 @@ class PurchaseDetailScreen extends ConsumerWidget {
     WidgetRef ref,
     Purchase purchase,
   ) async {
+    final uid = ref.read(inventoryUidProvider);
+    if (uid == null) return;
     final draft = await showDialog<_ReturnDraft>(
       context: context,
       builder: (_) => _ReturnDialog(purchase: purchase),
     );
-    if (draft == null || !context.mounted) return;
-    final uid = ref.read(inventoryUidProvider);
-    if (uid == null) return;
+    if (draft == null ||
+        !context.mounted ||
+        ref.read(inventoryUidProvider) != uid) {
+      return;
+    }
     try {
       final returnId = ref.read(purchaseRepositoryProvider).newId();
       await ref
@@ -86,6 +97,7 @@ class PurchaseDetailScreen extends ConsumerWidget {
             draft.reason,
             returnId,
           );
+      if (!context.mounted || ref.read(inventoryUidProvider) != uid) return;
       for (final sku in draft.quantities.keys) {
         ref.read(inventoryProvider.notifier).checkStock(uid, sku);
       }
@@ -142,9 +154,10 @@ class PurchaseDetailScreen extends ConsumerWidget {
           children: [
             const Eyebrow('Purchase record'),
             const SizedBox(height: 10),
-            Text(
+            FinancialAmount(
               formatMoney(purchase.draft.totalMinor, purchase.draft.currency),
               style: Theme.of(context).textTheme.headlineMedium,
+              prominent: true,
             ),
             const SizedBox(height: 8),
             Text(
@@ -248,11 +261,12 @@ class PurchaseDetailScreen extends ConsumerWidget {
                         final record = items[index];
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(
+                          title: FinancialAmount(
                             formatMoney(
                               record.totalMinor,
                               purchase.draft.currency,
                             ),
+                            compact: true,
                           ),
                           subtitle: Text(
                             '${record.reason} · ${purchaseDate(record.createdAt)}',

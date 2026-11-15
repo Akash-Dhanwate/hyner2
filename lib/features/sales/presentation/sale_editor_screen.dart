@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../customers/domain/customer.dart';
 import '../../customers/presentation/customers_controller.dart';
@@ -330,7 +331,10 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
       builder: (_) => SaleProductPicker(
         uid: widget.uid,
         selected: {
-          ..._seedLines.map((line) => line.sku),
+          for (final line in _seedLines) ...[
+            line.sku,
+            if (line.inventorySku != null) line.inventorySku!,
+          ],
           ..._products.map((product) => product.sku),
         },
         currency: _currency,
@@ -434,10 +438,12 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
       ref.invalidate(customerSalesProvider);
       ref.invalidate(businessReportProvider);
       final stockLines = draft.lines
-          .where((line) => line.pricing == null)
+          .where((line) => line.stockTracked)
           .toList();
       for (final line in stockLines) {
-        ref.read(inventoryProvider.notifier).checkStock(widget.uid, line.sku);
+        ref
+            .read(inventoryProvider.notifier)
+            .checkStock(widget.uid, line.stockSku!);
       }
       unawaited(
         LocalNotificationService.instance.activity(
@@ -452,7 +458,7 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
         unawaited(ref.read(inventoryProvider.notifier).refresh());
       }
       for (final line in stockLines) {
-        ref.invalidate(inventoryProductProvider(line.sku));
+        ref.invalidate(inventoryProductProvider(line.stockSku!));
       }
       setState(() {
         _saving = false;
@@ -479,7 +485,10 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
     final enabled = !_saving && !_uncertain;
     final customers = ref.watch(customersProvider).value ?? const <Customer>[];
     final customerFields = <Widget>[
-      Text('Customer details', style: Theme.of(context).textTheme.titleMedium),
+      Text(
+        '2. Customer details',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       if (_checkout == null) ...[
         const SizedBox(height: 8),
         const Text(
@@ -575,6 +584,12 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                 title: const Text('Build a bill'),
                 actions: [
                   IconButton(
+                    key: const Key('sale-editor-bill-preferences'),
+                    tooltip: 'Bill preferences',
+                    onPressed: () => context.push<void>('/bill-settings'),
+                    icon: const Icon(Icons.tune_rounded),
+                  ),
+                  IconButton(
                     tooltip: 'Saved bills',
                     onPressed: () => context.push<void>('/sales/history'),
                     icon: const Icon(Icons.history_rounded),
@@ -584,9 +599,26 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
         body: PageContent(
           children: [
             if (_checkout == null) ...[
+              if (widget.embedded)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Build a bill',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('sale-editor-bill-preferences'),
+                      tooltip: 'Bill preferences',
+                      onPressed: () => context.push<void>('/bill-settings'),
+                      icon: const Icon(Icons.tune_rounded),
+                    ),
+                  ],
+                ),
               Text(
-                'Build a bill',
-                style: Theme.of(context).textTheme.headlineMedium,
+                '1. Products',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),
               _addProductButton(enabled),
@@ -818,17 +850,17 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    FinancialAmount(
                       preview == null
                           ? (!_hasLines ? '—' : 'Check prices and quantities')
                           : formatMoney(preview.totalMinor, preview.currency),
-                      key: const Key('sale-total'),
-                      style: Theme.of(context).textTheme.headlineMedium,
+                      textKey: const Key('sale-total'),
+                      prominent: true,
                     ),
                     const SizedBox(height: 20),
                     if (_checkout == null) ...customerFields,
                     Text(
-                      'Payment',
+                      '3. Payment',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 10),
@@ -897,7 +929,7 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                     ],
                     const SizedBox(height: 16),
                     DetailHint(
-                      '${_checkout == null ? 'Saving the bill deducts stock.' : 'Stock is deducted only for inventory products added to this bill.'} The next screen shows a QR for your selected full or advance amount. The owner records payment after checking it in the payment app.',
+                      '${_checkout == null ? 'Saving the bill deducts stock.' : 'Stock is deducted for linked inventory products only.'} The next screen shows a QR for your selected full or advance amount. The owner records payment after checking it in the payment app.',
                     ),
                     const SizedBox(height: 20),
                     if (_failure != null) ...[
@@ -978,6 +1010,8 @@ class _CheckoutLines extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(line.name, style: Theme.of(context).textTheme.titleSmall),
+              if (line.inventorySku != null)
+                Text('Stock tracked · ${line.inventorySku}'),
               for (final parameter in line.parameters)
                 Text('${parameter.name} · ${parameter.value}'),
               Text(

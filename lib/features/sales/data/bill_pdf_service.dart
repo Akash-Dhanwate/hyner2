@@ -22,12 +22,12 @@ class BillPdfService {
     required PaymentSettings settings,
     BillCopy copy = BillCopy.original,
     BillBrandingCache? brandingCache,
+    bool quotation = false,
   }) async {
     final document = pw.Document(
-      title: 'Bill ${sale.id}',
+      title: '${quotation ? 'Quotation' : 'Bill'} ${sale.id}',
       author: settings.merchantName.isEmpty ? 'Hyner' : settings.merchantName,
     );
-    final label = copy == BillCopy.original ? 'Original' : 'Duplicate';
     final compact = copy == BillCopy.duplicate;
     final footerColor = PdfColor.fromInt(
       0xff000000 | settings.fontColor(BillTextSection.footer),
@@ -42,20 +42,22 @@ class BillPdfService {
         ),
         header: (context) => pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 12),
-          child: pw.Text(
-            '$label | Bill ${sale.id}',
-            style: pw.TextStyle(color: footerColor, fontSize: 8),
-          ),
+          child: context.pageNumber > 1
+              ? pw.Text(
+                  settings.merchantName,
+                  style: pw.TextStyle(color: footerColor, fontSize: 8),
+                )
+              : pw.SizedBox(),
         ),
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            '$label | Page ${context.pageNumber}',
+            'Page ${context.pageNumber}',
             style: pw.TextStyle(color: footerColor, fontSize: 8),
           ),
         ),
         build: (context) =>
-            _page(sale, settings, label, compact, brandingCache),
+            _page(sale, settings, quotation, compact, brandingCache),
       ),
     );
     return document.save();
@@ -64,7 +66,7 @@ class BillPdfService {
   static List<pw.Widget> _page(
     Sale sale,
     PaymentSettings settings,
-    String copy,
+    bool quotation,
     bool compact,
     BillBrandingCache? brandingCache,
   ) {
@@ -78,10 +80,19 @@ class BillPdfService {
     final totalColor = color(BillTextSection.totals);
     final footerColor = color(BillTextSection.footer);
     final centered = settings.billLayout == BillLayout.centered;
-    final alignment = centered ? pw.Alignment.center : pw.Alignment.topRight;
-    final textAlign = centered ? pw.TextAlign.center : pw.TextAlign.right;
+    final ledger = settings.billLayout == BillLayout.ledger;
+    final alignment = centered
+        ? pw.Alignment.center
+        : ledger
+        ? pw.Alignment.topLeft
+        : pw.Alignment.topRight;
+    final textAlign = centered
+        ? pw.TextAlign.center
+        : ledger
+        ? pw.TextAlign.left
+        : pw.TextAlign.right;
     final business = settings.merchantName.trim().isEmpty
-        ? 'Sales bill'
+        ? (quotation ? 'Quotation' : 'Sales bill')
         : settings.merchantName.trim();
     final branding = (brandingCache ?? BillBrandingCache()).prepare(
       settings,
@@ -95,12 +106,16 @@ class BillPdfService {
         child: pw.Column(
           crossAxisAlignment: centered
               ? pw.CrossAxisAlignment.center
+              : ledger
+              ? pw.CrossAxisAlignment.start
               : pw.CrossAxisAlignment.end,
           children: [
             pw.Row(
               mainAxisSize: pw.MainAxisSize.max,
               mainAxisAlignment: centered
                   ? pw.MainAxisAlignment.center
+                  : ledger
+                  ? pw.MainAxisAlignment.start
                   : pw.MainAxisAlignment.end,
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
@@ -149,52 +164,28 @@ class BillPdfService {
         ),
       ),
       pw.SizedBox(height: compact ? 12 : 22),
-      pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'BILL',
-                  style: pw.TextStyle(
-                    color: billColor,
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: compact ? 2 : 4),
-                pw.Text(
-                  sale.id,
-                  style: pw.TextStyle(color: billColor, fontSize: 10),
-                ),
-                pw.Text(
-                  saleDate(sale.createdAt),
-                  style: pw.TextStyle(color: billColor, fontSize: 9),
-                ),
-              ],
+      if (centered || ledger)
+        pw.Divider(color: billColor, thickness: ledger ? 2 : .7),
+      if (quotation) ...[
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.symmetric(vertical: 10),
+          decoration: pw.BoxDecoration(
+            color: _pale,
+            borderRadius: pw.BorderRadius.circular(5),
+          ),
+          child: pw.Text(
+            'QUOTATION',
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              color: billColor,
+              fontSize: compact ? 17 : 22,
+              fontWeight: pw.FontWeight.bold,
             ),
           ),
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: pw.BoxDecoration(
-              color: _pale,
-              borderRadius: pw.BorderRadius.circular(5),
-            ),
-            child: pw.Text(
-              copy,
-              style: pw.TextStyle(
-                color: billColor,
-                fontSize: 9,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-      pw.SizedBox(height: compact ? 9 : 16),
+        ),
+        pw.SizedBox(height: compact ? 8 : 14),
+      ],
       if (sale.draft.customerName != null)
         pw.Container(
           padding: pw.EdgeInsets.all(compact ? 6 : 10),
@@ -206,14 +197,20 @@ class BillPdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'Customer',
-                style: pw.TextStyle(color: customerColor, fontSize: 9),
+                'Customer name',
+                style: pw.TextStyle(
+                  color: customerColor,
+                  fontSize: quotation ? 10 : 9,
+                  fontWeight: quotation
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                ),
               ),
               pw.Text(
                 sale.draft.customerName!,
                 style: pw.TextStyle(
                   color: customerColor,
-                  fontSize: 10,
+                  fontSize: quotation ? (compact ? 13 : 16) : 10,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
@@ -230,16 +227,32 @@ class BillPdfService {
             ],
           ),
         ),
-      if (sale.draft.customerId != null) ...[
+      if (sale.draft.customerId != null || quotation) ...[
         pw.SizedBox(height: compact ? 3 : 6),
         pw.Text(
-          'Customer ID: ${customerReference(sale.draft.customerName ?? '', sale.draft.customerPhone ?? '', sale.draft.customerId!)}',
+          'Customer ID: ${customerReference(sale.draft.customerName ?? '', sale.draft.customerPhone ?? '', sale.draft.customerId ?? sale.id)}',
           style: pw.TextStyle(color: customerColor, fontSize: 8),
         ),
       ],
+      pw.SizedBox(height: 8),
+      pw.Text(
+        saleDate(sale.createdAt),
+        style: pw.TextStyle(
+          color: billColor,
+          fontSize: compact ? 11 : 13,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+      pw.SizedBox(height: 3),
+      pw.Text(
+        'Reference: ${sale.id}',
+        style: pw.TextStyle(color: billColor, fontSize: 8),
+      ),
       pw.SizedBox(height: compact ? 10 : 18),
       pw.Table(
-        border: const pw.TableBorder(bottom: pw.BorderSide(color: _line)),
+        border: ledger
+            ? pw.TableBorder.all(color: _line, width: .5)
+            : const pw.TableBorder(bottom: pw.BorderSide(color: _line)),
         columnWidths: const {
           0: pw.FlexColumnWidth(4),
           1: pw.FlexColumnWidth(1),
@@ -252,40 +265,15 @@ class BillPdfService {
             header: true,
             compact: compact,
             color: itemColor,
+            background: centered || ledger ? _pale : null,
           ),
-          for (final line in sale.draft.lines) ...[
-            _row(
-              [
-                line.name,
-                '${line.quantity}',
-                '${line.pricing?.unitPriceRounded == true ? '~ ' : ''}${formatMoney(line.unitPriceMinor, sale.draft.currency)}',
-                formatMoney(line.totalMinor, sale.draft.currency),
-              ],
+          for (final line in sale.draft.lines)
+            ..._itemRows(
+              line,
+              sale.draft.currency,
               compact: compact,
               color: itemColor,
             ),
-            // Separate table rows can paginate even when one item has many
-            // long specifications. A single oversized cell cannot split.
-            for (final parameter in line.parameters)
-              _row(
-                [
-                  _parameterText('${parameter.name}: ${parameter.value}'),
-                  '',
-                  '',
-                  '',
-                ],
-                compact: compact,
-                color: itemColor,
-                specification: true,
-              ),
-            if (line.pricing?.unitPriceRounded == true)
-              _row(
-                ['Approximate unit price; line amount is final.', '', '', ''],
-                compact: compact,
-                color: itemColor,
-                specification: true,
-              ),
-          ],
         ],
       ),
       pw.Inseparable(
@@ -328,18 +316,20 @@ class BillPdfService {
                     color: totalColor,
                     large: true,
                   ),
-                  _totalRow(
-                    'Paid',
-                    sale.paidMinor,
-                    sale.draft.currency,
-                    color: totalColor,
-                  ),
-                  _totalRow(
-                    'Balance due',
-                    sale.remainingMinor,
-                    sale.draft.currency,
-                    color: totalColor,
-                  ),
+                  if (!quotation)
+                    _totalRow(
+                      'Paid',
+                      sale.paidMinor,
+                      sale.draft.currency,
+                      color: totalColor,
+                    ),
+                  if (!quotation)
+                    _totalRow(
+                      'Balance due',
+                      sale.remainingMinor,
+                      sale.draft.currency,
+                      color: totalColor,
+                    ),
                 ],
               ),
             ),
@@ -368,7 +358,7 @@ class BillPdfService {
             if (!compact) pw.Divider(color: _line),
             if (!compact) pw.SizedBox(height: 8),
             pw.Text(
-              'Payment status: ${sale.paymentStatus.name.toUpperCase()}  ·  ${settings.footerText.trim().isEmpty ? 'Thank you for your business.' : settings.footerText.trim()}',
+              '${quotation ? 'Quotation only - not a bill or payment receipt.  ' : 'Payment status: ${sale.paymentStatus.name.toUpperCase()}  ·  '}${settings.footerText.trim().isEmpty ? 'Thank you for your business.' : settings.footerText.trim()}',
               textAlign: centered ? pw.TextAlign.center : pw.TextAlign.left,
               style: pw.TextStyle(
                 color: footerColor,
@@ -385,6 +375,114 @@ class BillPdfService {
   // summaries legible with the built-in PDF font, including tax/discount specs.
   static String _parameterText(String text) =>
       text.replaceAll('₹', 'INR ').replaceAll('≈', '~');
+
+  static Iterable<pw.TableRow> _itemRows(
+    SaleLine line,
+    String currency, {
+    required bool compact,
+    required PdfColor color,
+  }) sync* {
+    // Ordinary measurements stay with the product. Very long specification
+    // lists use continuation rows so the PDF paginator can safely split them.
+    final inline =
+        line.parameters.length <= 5 &&
+        line.parameters.every(
+          (parameter) => '${parameter.name}: ${parameter.value}'.length <= 100,
+        );
+    yield _itemRow(
+      line,
+      currency,
+      compact: compact,
+      color: color,
+      includeSpecifications: inline,
+    );
+    if (!inline) {
+      for (final parameter in line.parameters) {
+        yield _row(
+          [_parameterText('${parameter.name}: ${parameter.value}'), '', '', ''],
+          compact: compact,
+          color: color,
+          specification: true,
+        );
+      }
+      if (line.pricing?.unitPriceRounded == true) {
+        yield _row(
+          ['Approximate unit price; line amount is final.', '', '', ''],
+          compact: compact,
+          color: color,
+          specification: true,
+        );
+      }
+    }
+  }
+
+  static pw.TableRow _itemRow(
+    SaleLine line,
+    String currency, {
+    required bool compact,
+    required PdfColor color,
+    required bool includeSpecifications,
+  }) => pw.TableRow(
+    children: [
+      pw.Padding(
+        padding: pw.EdgeInsets.symmetric(
+          vertical: compact ? 4 : 8,
+          horizontal: 4,
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              line.name,
+              style: pw.TextStyle(
+                color: color,
+                fontSize: compact ? 8 : 10,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            if (includeSpecifications && line.parameters.isNotEmpty) ...[
+              pw.SizedBox(height: 2),
+              pw.Text(
+                line.parameters
+                    .map(
+                      (parameter) => _parameterText(
+                        '${parameter.name}: ${parameter.value}',
+                      ),
+                    )
+                    .join('  ·  '),
+                style: pw.TextStyle(color: color, fontSize: compact ? 7 : 8),
+              ),
+            ],
+            if (includeSpecifications && line.pricing?.unitPriceRounded == true)
+              pw.Text(
+                'Approximate unit price; line amount is final.',
+                style: pw.TextStyle(color: color, fontSize: compact ? 7 : 8),
+              ),
+          ],
+        ),
+      ),
+      for (final value in [
+        '${line.quantity}',
+        '${line.pricing?.unitPriceRounded == true ? '~ ' : ''}${formatMoney(line.unitPriceMinor, currency)}',
+        formatMoney(line.totalMinor, currency),
+      ])
+        pw.Padding(
+          padding: pw.EdgeInsets.symmetric(
+            vertical: compact ? 4 : 8,
+            horizontal: 4,
+          ),
+          child: pw.Text(
+            value,
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(
+              color: color,
+              fontSize: compact ? 8 : 10,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+    ],
+  );
 
   // Decode optional images before layout so a damaged legacy image cannot
   // abort invoice creation. Bound resolution and strip image metadata; the
@@ -420,7 +518,9 @@ class BillPdfService {
     bool compact = false,
     bool specification = false,
     PdfColor color = _ink,
+    PdfColor? background,
   }) => pw.TableRow(
+    decoration: background == null ? null : pw.BoxDecoration(color: background),
     repeat: header,
     children: [
       for (final value in values)
@@ -456,7 +556,7 @@ class BillPdfService {
           width: 90,
           child: pw.Text(
             label,
-            style: pw.TextStyle(color: color, fontSize: large ? 10 : 9),
+            style: pw.TextStyle(color: color, fontSize: large ? 12 : 9),
           ),
         ),
         pw.SizedBox(
@@ -466,7 +566,7 @@ class BillPdfService {
             textAlign: pw.TextAlign.right,
             style: pw.TextStyle(
               color: color,
-              fontSize: large ? 13 : 9,
+              fontSize: large ? 17 : 10,
               fontWeight: large ? pw.FontWeight.bold : pw.FontWeight.normal,
             ),
           ),

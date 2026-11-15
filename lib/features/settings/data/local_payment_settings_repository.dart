@@ -36,9 +36,11 @@ class LocalPaymentSettingsRepository implements PaymentSettingsRepository {
       businessPhone: values['businessPhone'] ?? '',
       businessAddress: values['businessAddress'] ?? '',
       taxId: values['taxId'] ?? '',
-      billLayout: values['billLayout'] == BillLayout.centered.name
-          ? BillLayout.centered
-          : BillLayout.right,
+      billLayout:
+          BillLayout.values
+              .where((layout) => layout.name == values['billLayout'])
+              .firstOrNull ??
+          BillLayout.right,
       logoBase64: values['logoBase64'] ?? '',
       signatureBase64: values['signatureBase64'] ?? '',
       headerFontSize: double.tryParse(values['headerFontSize'] ?? '') ?? 20,

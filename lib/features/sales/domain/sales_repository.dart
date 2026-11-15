@@ -23,9 +23,11 @@ abstract interface class SalesRepository {
     required String? expectedName,
     required String? expectedPhone,
   });
+  Future<List<Sale>> recent(String uid);
   Future<List<Sale>> forCustomer(String uid, String customerId);
   Future<Sale> get(String uid, String id);
   Future<void> create(String uid, String id, SaleDraft draft);
+  Future<void> delete(String uid, String id, {required int expectedPaidMinor});
   Future<void> markPaid(String uid, String id);
   Future<void> recordPayment(
     String uid,

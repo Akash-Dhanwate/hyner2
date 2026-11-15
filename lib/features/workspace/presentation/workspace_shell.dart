@@ -13,15 +13,17 @@ class WorkspaceShell extends ConsumerWidget {
     super.key,
     required this.location,
     required this.child,
+    this.showAppBar = true,
   });
   final String location;
   final Widget child;
+  final bool showAppBar;
 
   int get _selected {
     if (location == '/dashboard') return 0;
-    if (location.startsWith('/inventory')) return 1;
+    if (location.startsWith('/quickprice')) return 1;
     if (location.startsWith('/sales')) return 2;
-    if (location == '/reports') return 3;
+    if (location.startsWith('/inventory')) return 3;
     return 4;
   }
 
@@ -29,43 +31,66 @@ class WorkspaceShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(sessionProvider).profile;
     final wide = MediaQuery.sizeOf(context).width >= 720;
+    final billEditor = location == '/sales';
+    final showNavigation = !billEditor;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const HynerMark(size: 28),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                'Hyner',
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
+      appBar: showAppBar
+          ? AppBar(
+              leading: billEditor
+                  ? IconButton(
+                      tooltip: 'Back',
+                      onPressed: () {
+                        final router = GoRouter.of(context);
+                        if (router.canPop()) router.pop();
+                      },
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    )
+                  : null,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const HynerMark(size: 28),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      'Hyner',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'QuickPrice',
-            onPressed: () =>
-                openWorkspacePage(GoRouter.of(context), '/quickprice'),
-            icon: const Icon(Icons.calculate_outlined),
-          ),
-          if (profile != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: IconButton(
-                tooltip: 'Your profile',
-                onPressed: () =>
-                    openWorkspacePage(GoRouter.of(context), '/profile'),
-                icon: AccountAvatar(profile: profile, radius: 17),
-              ),
-            ),
-        ],
-      ),
-      drawer: wide
+              actions: [
+                if (billEditor)
+                  IconButton(
+                    tooltip: 'Saved bills',
+                    onPressed: () => openWorkspacePage(
+                      GoRouter.of(context),
+                      '/sales/history',
+                    ),
+                    icon: const Icon(Icons.history_rounded),
+                  ),
+                IconButton(
+                  tooltip: 'QuickPrice',
+                  onPressed: () =>
+                      openWorkspacePage(GoRouter.of(context), '/quickprice'),
+                  icon: const Icon(Icons.calculate_outlined),
+                ),
+                if (profile != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: IconButton(
+                      tooltip: 'Your profile',
+                      onPressed: () =>
+                          openWorkspacePage(GoRouter.of(context), '/profile'),
+                      icon: AccountAvatar(profile: profile, radius: 17),
+                    ),
+                  ),
+              ],
+            )
+          : null,
+      drawer: wide || !showNavigation
           ? null
           : Drawer(
               child: SafeArea(
@@ -74,7 +99,7 @@ class WorkspaceShell extends ConsumerWidget {
             ),
       body: Row(
         children: [
-          if (wide)
+          if (wide && showNavigation)
             SizedBox(
               width: 224,
               child: DecoratedBox(
@@ -89,7 +114,7 @@ class WorkspaceShell extends ConsumerWidget {
           Expanded(child: child),
         ],
       ),
-      bottomNavigationBar: wide
+      bottomNavigationBar: wide || !showNavigation
           ? null
           : DecoratedBox(
               decoration: BoxDecoration(
@@ -114,7 +139,12 @@ class WorkspaceShell extends ConsumerWidget {
                   } else {
                     openWorkspacePage(
                       GoRouter.of(context),
-                      ['/dashboard', '/inventory', '/sales', '/reports'][index],
+                      [
+                        '/dashboard',
+                        '/quickprice',
+                        '/sales',
+                        '/inventory',
+                      ][index],
                     );
                   }
                 },
@@ -125,19 +155,19 @@ class WorkspaceShell extends ConsumerWidget {
                     label: 'Home',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.inventory_2_outlined),
-                    selectedIcon: Icon(Icons.inventory_2_rounded),
-                    label: 'Inventory',
+                    icon: Icon(Icons.calculate_outlined),
+                    selectedIcon: Icon(Icons.calculate_rounded),
+                    label: 'Price',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.receipt_long_outlined),
                     selectedIcon: Icon(Icons.receipt_long_rounded),
-                    label: 'Sales',
+                    label: 'Bill',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.bar_chart_outlined),
-                    selectedIcon: Icon(Icons.bar_chart_rounded),
-                    label: 'Reports',
+                    icon: Icon(Icons.inventory_2_outlined),
+                    selectedIcon: Icon(Icons.inventory_2_rounded),
+                    label: 'Stock',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.more_horiz_rounded),
@@ -180,28 +210,29 @@ class _NavigationList extends StatelessWidget {
             selected: location == '/dashboard',
             onTap: () => navigate('/dashboard'),
           ),
-          for (final module in businessModules.where(
-            (m) => ['/inventory', '/sales', '/reports'].contains(m.path),
-          ))
+          for (final entry in const [
+            ('Price', '/quickprice', Icons.calculate_outlined),
+            ('Bill', '/sales', Icons.receipt_long_outlined),
+            ('Stock', '/inventory', Icons.inventory_2_outlined),
+          ])
             ListTile(
-              leading: Icon(module.icon),
-              title: Text(module.name),
+              leading: Icon(entry.$3),
+              title: Text(entry.$1),
               selected:
-                  location == module.path ||
-                  location.startsWith('${module.path}/'),
-              onTap: () => navigate(module.path),
+                  location == entry.$2 || location.startsWith('${entry.$2}/'),
+              onTap: () => navigate(entry.$2),
             ),
         ],
         for (final group in const {
-          'Sell & collect': [
-            '/quickprice',
-            '/sales',
+          'Business': [
             '/customers',
+            '/purchases',
+            '/expenses',
             '/quotations',
-            '/whatsapp',
+            '/purchase-orders',
           ],
-          'Stock & suppliers': ['/inventory', '/purchases', '/purchase-orders'],
-          'Money & reports': ['/expenses', '/accounting', '/reports'],
+          'Insights': ['/accounting'],
+          'Communication': ['/whatsapp'],
         }.entries) ...[
           Padding(
             padding: const EdgeInsets.only(top: 24, bottom: 8),
@@ -212,6 +243,17 @@ class _NavigationList extends StatelessWidget {
               ),
             ),
           ),
+          if (group.key == 'Business')
+            ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              leading: const Icon(Icons.receipt_long_outlined, size: 22),
+              title: const Text('Bill history'),
+              selected: location.startsWith('/sales/history'),
+              onTap: () => navigate('/sales/history'),
+            ),
           for (final module in businessModules.where(
             (module) =>
                 group.value.contains(module.path) &&
@@ -231,10 +273,54 @@ class _NavigationList extends StatelessWidget {
               title: Text(module.name),
               onTap: () => navigate(module.path),
             ),
+          if (group.key == 'Insights') ...[
+            ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              leading: const Icon(Icons.bar_chart_rounded, size: 22),
+              title: const Text('Reports'),
+              selected: location == '/reports',
+              onTap: () => navigate('/reports'),
+            ),
+            ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              leading: const Icon(Icons.pending_actions_outlined, size: 22),
+              title: const Text('Pending payments'),
+              selected: location == '/sales/remaining',
+              onTap: () => navigate('/sales/remaining'),
+            ),
+          ],
         ],
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Divider(),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Preferences',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          leading: const Icon(Icons.help_outline_rounded, size: 22),
+          title: const Text('How do I...?'),
+          selected: location == '/help',
+          onTap: () => navigate('/help'),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          leading: const Icon(Icons.directions_walk_outlined, size: 22),
+          title: const Text('Take a tour'),
+          onTap: () => navigate('/getting-started'),
         ),
         for (final module in accountModules)
           ListTile(

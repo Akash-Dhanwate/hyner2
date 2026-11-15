@@ -1,34 +1,60 @@
 import 'package:flutter/material.dart';
 
+import 'theme_preset.dart';
+
+export 'theme_preset.dart';
+
 /// One visual system for the business workspace and every QuickPrice entry.
 abstract final class HynerTheme {
   static const inkGreen = Color(0xFF175C46);
-  static ThemeData build(Brightness brightness) {
+  static final _cache = <(Brightness, ThemePreset), ThemeData>{};
+  static ThemeData build(
+    Brightness brightness, {
+    ThemePreset preset = ThemePreset.sageGreen,
+  }) => _cache.putIfAbsent((
+    brightness,
+    preset,
+  ), () => _build(brightness, preset));
+
+  static ThemeData _build(Brightness brightness, ThemePreset preset) {
     final dark = brightness == Brightness.dark;
     final scheme =
         ColorScheme.fromSeed(
-          seedColor: inkGreen,
+          seedColor: preset.lightPrimary,
           brightness: brightness,
         ).copyWith(
-          primary: dark ? const Color(0xFF9AD8B8) : inkGreen,
-          onPrimary: dark ? const Color(0xFF0A3927) : Colors.white,
+          primary: dark ? preset.darkPrimary : preset.lightPrimary,
+          onPrimary: dark ? preset.darkSurface : Colors.white,
           primaryContainer: dark
-              ? const Color(0xFF234B38)
-              : const Color(0xFFE0EDE4),
-          onPrimaryContainer: dark
-              ? const Color(0xFFD6F2DF)
-              : const Color(0xFF193F2D),
-          surface: dark ? const Color(0xFF111A16) : const Color(0xFFF8F9F5),
+              ? Color.alphaBlend(
+                  preset.darkPrimary.withValues(alpha: .16),
+                  preset.darkSurface,
+                )
+              : Color.alphaBlend(
+                  preset.lightPrimary.withValues(alpha: .10),
+                  preset.lightSurface,
+                ),
+          onPrimaryContainer: dark ? preset.darkPrimary : preset.lightPrimary,
+          surface: dark ? preset.darkSurface : preset.lightSurface,
           onSurface: dark ? const Color(0xFFEDF3EC) : const Color(0xFF222D27),
           onSurfaceVariant: dark
               ? const Color(0xFFB5C3B8)
               : const Color(0xFF526157),
           surfaceContainerLow: dark
-              ? const Color(0xFF19241E)
+              ? Color.alphaBlend(
+                  preset.darkPrimary.withValues(alpha: .04),
+                  preset.darkSurface,
+                )
               : const Color(0xFFFFFEFB),
           surfaceContainerHighest: dark
-              ? const Color(0xFF293A30)
-              : const Color(0xFFE8EEE7),
+              ? Color.alphaBlend(
+                  preset.darkPrimary.withValues(alpha: .10),
+                  preset.darkSurface,
+                )
+              : Color.alphaBlend(
+                  preset.lightPrimary.withValues(alpha: .06),
+                  preset.lightSurface,
+                ),
           outline: dark ? const Color(0xFF82988A) : const Color(0xFF76877B),
           outlineVariant: dark
               ? const Color(0xFF34473B)
@@ -46,6 +72,12 @@ abstract final class HynerTheme {
     );
     const radius = BorderRadius.all(Radius.circular(10));
     return base.copyWith(
+      extensions: [
+        HynerStatusColors(
+          success: dark ? const Color(0xFF9AD8B8) : const Color(0xFF246447),
+          warning: dark ? const Color(0xFFE9C58C) : const Color(0xFF80541D),
+        ),
+      ],
       scaffoldBackgroundColor: scheme.surface,
       visualDensity: VisualDensity.standard,
       materialTapTargetSize: MaterialTapTargetSize.padded,

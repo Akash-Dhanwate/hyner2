@@ -89,6 +89,7 @@ void main() {
     final old = await databaseFactoryFfi.openDatabase(path);
     await old.execute('DROP TABLE bill_documents');
     await old.execute('DROP INDEX customers_identity');
+    await old.execute('ALTER TABLE customers DROP COLUMN whatsappOptInAt');
     await old.execute('ALTER TABLE customers DROP COLUMN identityKey');
     if (version == 8) {
       await old.execute('ALTER TABLE customers DROP COLUMN address');
@@ -137,7 +138,7 @@ void main() {
         await old.close();
 
         final db = await store.databaseFor(uid);
-        expect(await db.getVersion(), 12);
+        expect(await db.getVersion(), 13);
         expect(await db.query('bill_documents'), isEmpty);
         final archiveColumns = await db.rawQuery(
           'PRAGMA table_info(bill_documents)',
@@ -180,6 +181,8 @@ void main() {
           );
           final expected = {...row};
           if (version == 8) expected['address'] = '';
+          expected['whatsappOptIn'] = 0;
+          expected['whatsappOptInAt'] = null;
           expect({...actual}..remove('identityKey'), expected);
         }
         expect(
@@ -196,7 +199,8 @@ void main() {
           (row) => row['id'] == links['new_contact'],
         );
         expect(newPerson['createdAt'], time);
-        expect(newPerson['whatsappOptIn'], 1);
+        expect(newPerson['whatsappOptIn'], 0);
+        expect(newPerson['whatsappOptInAt'], isNull);
         expect(newPerson['address'], version == 8 ? '' : 'Bill address');
 
         // A legacy duplicate can still be edited without stealing the canonical key.
@@ -300,7 +304,7 @@ void main() {
     }
     await old.close();
     final db = await store.databaseFor(uid);
-    expect(await db.getVersion(), 12);
+    expect(await db.getVersion(), 13);
     expect(await db.query('customers'), isEmpty);
     final rows = await db.query('sales', orderBy: 'id');
     expect(rows.every((row) => row['customerId'] == null), isTrue);
@@ -326,6 +330,15 @@ void main() {
       ) as Map<String, dynamic>,
     );
     final db = await store.databaseFor(uid);
+    final restoredCustomers = await db.query('customers', orderBy: 'id');
+    // The second bill has no directory link, so restore repairs it into a
+    // customer row while retaining the legacy bill snapshot.
+    expect(restoredCustomers, hasLength(2));
+    expect(restoredCustomers.every((row) => row['whatsappOptIn'] == 0), isTrue);
+    expect(
+      restoredCustomers.every((row) => row['whatsappOptInAt'] == null),
+      isTrue,
+    );
     final saved = await db.query('sales', orderBy: 'id');
     expect(saved.first['customerId'], 'existing');
     expect(saved.last['customerId'], isNotNull);
@@ -347,4 +360,45 @@ void main() {
     await store.restoreFor(uid, {...current, 'tables': currentTables});
     expect((await store.exportFor(uid))['tables'], current['tables']);
   });
+
+  test(
+    'v11 backup preserves only consent backed by a valid timestamp',
+    () async {
+      await LocalCustomerRepository(store).save(
+        uid,
+        const CustomerDraft(
+          name: 'Consenting Buyer',
+          phone: '9876543210',
+          whatsappOptIn: true,
+        ),
+      );
+      final explicit = await store.exportFor(uid);
+      await store.restoreFor(
+        uid,
+        jsonDecode(jsonEncode(explicit)) as Map<String, dynamic>,
+      );
+      var saved =
+          (await store.databaseFor(uid).then((db) => db.query('customers')))
+              .single;
+      expect(saved['whatsappOptIn'], 1);
+      expect(DateTime.tryParse(saved['whatsappOptInAt']! as String), isNotNull);
+
+      final unverified =
+          jsonDecode(jsonEncode(explicit)) as Map<String, dynamic>;
+      final tables = Map<String, dynamic>.from(unverified['tables']! as Map);
+      final customers = List<Map<String, dynamic>>.from(
+        (tables['customers']! as List).map(
+          (row) => Map<String, dynamic>.from(row as Map),
+        ),
+      );
+      customers.single['whatsappOptInAt'] = null;
+      tables['customers'] = customers;
+      unverified['tables'] = tables;
+      await store.restoreFor(uid, unverified);
+      saved = (await store.databaseFor(uid).then((db) => db.query('customers')))
+          .single;
+      expect(saved['whatsappOptIn'], 0);
+      expect(saved['whatsappOptInAt'], isNull);
+    },
+  );
 }

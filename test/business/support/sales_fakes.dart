@@ -19,6 +19,7 @@ class FakeSales implements SalesRepository {
   Completer<void>? pendingWrite;
   int ids = 0, writes = 0, pageSize = 30;
   final requestedUids = <String>[];
+  final deletedIds = <(String, String)>{};
   @override
   String newSaleId() => 'sale${++ids}';
   @override
@@ -52,6 +53,10 @@ class FakeSales implements SalesRepository {
           : null,
     );
   }
+
+  @override
+  Future<List<Sale>> recent(String uid) async =>
+      (await list(uid)).sales.take(3).toList();
 
   @override
   Future<void> updateContact(
@@ -117,6 +122,9 @@ class FakeSales implements SalesRepository {
     if (pendingWrite != null) await pendingWrite!.future;
     if (failure != null) throw failure!;
     draft.validate();
+    if (deletedIds.contains((uid, id))) {
+      throw inventoryInvalid('This bill was deleted. Start a new bill.');
+    }
     final existing = sales(uid)[id];
     if (existing != null) {
       if (!existing.draft.matches(draft)) {
@@ -163,6 +171,47 @@ class FakeSales implements SalesRepository {
     if (failAfterCommit) {
       throw const AppFailure(FailureKind.network, 'Connection interrupted');
     }
+  }
+
+  @override
+  Future<void> delete(
+    String uid,
+    String id, {
+    required int expectedPaidMinor,
+  }) async {
+    if (pendingWrite != null) await pendingWrite!.future;
+    if (failure != null) throw failure!;
+    if (deletedIds.contains((uid, id))) return;
+    final sale = await get(uid, id);
+    if (sale.paidMinor != expectedPaidMinor) {
+      throw inventoryInvalid(
+        'Payments on this bill changed. Reopen the bill before deleting it.',
+      );
+    }
+    for (final line in sale.draft.lines) {
+      if (!line.stockTracked) continue;
+      final p = inventory.products(uid)[line.sku]!;
+      inventory.products(uid)[line.sku] = Product(
+        sku: p.sku,
+        name: p.name,
+        category: p.category,
+        currency: p.currency,
+        costMinor: p.costMinor,
+        priceMinor: p.priceMinor,
+        parameters: p.parameters,
+        pricingFormula: p.pricingFormula,
+        quantity: p.quantity + line.quantity,
+        reorderLevel: p.reorderLevel,
+        archived: false,
+        revision: p.revision + 1,
+        lastMovementId: 'delete_$id',
+        createdAt: p.createdAt,
+        updatedAt: DateTime.now(),
+      );
+    }
+    sales(uid).remove(id);
+    deletedIds.add((uid, id));
+    writes++;
   }
 
   @override

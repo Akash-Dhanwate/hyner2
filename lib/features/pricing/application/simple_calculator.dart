@@ -203,6 +203,11 @@ ProductSetup quickProduct(String template, {String? name}) {
     },
   );
   setup.data['template'] = template;
+  setup.data['inventoryTracking'] = true;
+  setup.data['inventoryOpeningStock'] = '100';
+  setup.data['inventoryReorderLevel'] = '10';
+  setup.data['inventoryCost'] = '0.00';
+  setup.data['inventoryPrice'] = '0.00';
   setup.data['name'] =
       name ??
       switch (template) {

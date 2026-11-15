@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -149,6 +151,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             isError: true,
                           ),
                         ],
+                        if (state.pricingSyncWarning != null) ...[
+                          const SizedBox(height: 12),
+                          InlineNotice(
+                            state.pricingSyncWarning!,
+                            isError: true,
+                          ),
+                          TextButton(
+                            onPressed: state.loading ? null : _refresh,
+                            child: const Text('Retry calculator sync'),
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         Wrap(
                           spacing: 10,
@@ -156,7 +169,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           children: [
                             for (final archived in [false, true])
                               ChoiceChip(
-                                label: Text(archived ? 'Archived' : 'Active'),
+                                label: Text(archived ? 'Archived' : 'All'),
                                 selected: state.query.archived == archived,
                                 onSelected: (_) => controller.refresh(
                                   query: InventoryQuery(
@@ -301,73 +314,64 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   sliver: SliverList.separated(
                     itemCount: state.products.length,
-                    separatorBuilder: (_, index) => const SizedBox(height: 8),
+                    separatorBuilder: (_, index) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final product = state.products[index];
-                      return DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: theme.colorScheme.outlineVariant,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          key: ValueKey('product-${product.sku}'),
-                          onTap: () =>
-                              context.push<void>('/inventory/${product.sku}'),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        product.name,
-                                        style: theme.textTheme.titleMedium,
-                                      ),
+                      return InkWell(
+                        key: ValueKey('product-${product.sku}'),
+                        onTap: () =>
+                            context.push<void>('/inventory/${product.sku}'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      product.name,
+                                      style: theme.textTheme.titleMedium,
                                     ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.chevron_right_rounded),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '${product.sku}${product.category.isEmpty ? '' : ' · ${product.category}'}',
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                                const SizedBox(height: 10),
-                                Wrap(
-                                  spacing: 16,
-                                  runSpacing: 6,
-                                  children: [
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.chevron_right_rounded),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${product.sku}${product.category.isEmpty ? '' : ' · ${product.category}'}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 16,
+                                runSpacing: 6,
+                                children: [
+                                  Text(
+                                    '${product.quantity} units',
+                                    style: theme.textTheme.labelLarge,
+                                  ),
+                                  FinancialAmount(
+                                    formatMoney(
+                                      product.priceMinor,
+                                      product.currency,
+                                    ),
+                                    compact: true,
+                                  ),
+                                  if (product.isLowStock)
                                     Text(
-                                      '${product.quantity} units',
-                                      style: theme.textTheme.labelLarge,
+                                      product.quantity == 0
+                                          ? 'Out of stock'
+                                          : 'Low stock',
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color: theme.colorScheme.error,
+                                          ),
                                     ),
-                                    Text(
-                                      formatMoney(
-                                        product.priceMinor,
-                                        product.currency,
-                                      ),
-                                      style: theme.textTheme.bodySmall,
-                                    ),
-                                    if (product.isLowStock)
-                                      Text(
-                                        product.quantity == 0
-                                            ? 'Out of stock'
-                                            : 'Low stock',
-                                        style: theme.textTheme.labelMedium
-                                            ?.copyWith(
-                                              color: theme.colorScheme.error,
-                                            ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                       );

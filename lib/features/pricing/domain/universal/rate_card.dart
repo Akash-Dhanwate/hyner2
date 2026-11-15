@@ -10,7 +10,10 @@ final class UniversalProduct {
     required this.name,
     required this.rule,
     Map<String, String> attributes = const {},
-  }) : attributes = Map.unmodifiable(attributes) {
+    this.inventorySku,
+    Map<String, String> inventorySkuByRateId = const {},
+  }) : attributes = Map.unmodifiable(attributes),
+       inventorySkuByRateId = Map.unmodifiable(inventorySkuByRateId) {
     validateId(categoryId);
     validateName(name);
     if (attributes.length > 16) {
@@ -20,29 +23,76 @@ final class UniversalProduct {
       validateName(entry.key);
       validateName(entry.value);
     }
+    if (inventorySku != null &&
+        !RegExp(r'^[A-Z0-9][A-Z0-9_-]{0,39}$').hasMatch(inventorySku!)) {
+      throw ArgumentError('Invalid linked inventory product code');
+    }
+    if (inventorySkuByRateId.length > 1000 ||
+        inventorySkuByRateId.entries.any(
+          (entry) =>
+              !RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(entry.key) ||
+              !RegExp(r'^[A-Z0-9][A-Z0-9_-]{0,39}$').hasMatch(entry.value),
+        )) {
+      throw ArgumentError('Invalid linked inventory variety codes');
+    }
   }
   final String categoryId;
   final String name;
   final UniversalPricingRule rule;
   final Map<String, String> attributes;
+
+  /// Optional exact inventory identity. Null keeps this as a price-only item.
+  final String? inventorySku;
+
+  /// Per-rate inventory identity for products with selectable varieties.
+  /// Older saved products omit this field and remain readable.
+  final Map<String, String> inventorySkuByRateId;
   String get id => rule.productId;
   UniversalProduct withRule(UniversalPricingRule value) => UniversalProduct(
     categoryId: categoryId,
     name: name,
     rule: value,
     attributes: attributes,
+    inventorySku: inventorySku,
+    inventorySkuByRateId: inventorySkuByRateId,
+  );
+  UniversalProduct withInventorySku(String? value) => UniversalProduct(
+    categoryId: categoryId,
+    name: name,
+    rule: rule,
+    attributes: attributes,
+    inventorySku: value,
+    inventorySkuByRateId: value == null ? const {} : inventorySkuByRateId,
+  );
+  UniversalProduct withInventoryVariants(
+    Map<String, String> values, {
+    String? primarySku,
+  }) => UniversalProduct(
+    categoryId: categoryId,
+    name: name,
+    rule: rule,
+    attributes: attributes,
+    inventorySku: primarySku ?? inventorySku,
+    inventorySkuByRateId: values,
   );
   Map<String, Object?> toJson() => {
     'categoryId': categoryId,
     'name': name,
     'attributes': attributes,
     'rule': rule.toJson(),
+    if (inventorySku != null) 'inventorySku': inventorySku,
+    if (inventorySkuByRateId.isNotEmpty)
+      'inventorySkuByRateId': inventorySkuByRateId,
   };
   factory UniversalProduct.fromJson(Map<String, dynamic> json) =>
       UniversalProduct(
         categoryId: json['categoryId'] as String,
         name: json['name'] as String,
         attributes: Map<String, String>.from(json['attributes'] as Map),
+        inventorySku: json['inventorySku'] as String?,
+        inventorySkuByRateId: Map<String, String>.from(
+          json['inventorySkuByRateId'] as Map? ?? const {},
+        ),
         rule: UniversalPricingRule.fromJson(
           json['rule'] as Map<String, dynamic>,
         ),

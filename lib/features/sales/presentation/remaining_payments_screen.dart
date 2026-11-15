@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/app_failure.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../../inventory/domain/product.dart';
 import '../domain/sale.dart';
 import 'sales_controller.dart';
@@ -97,18 +98,17 @@ class RemainingPaymentsScreen extends ConsumerWidget {
                             spacing: 18,
                             runSpacing: 6,
                             children: [
-                              Text(
+                              FinancialAmount(
                                 'Bill ${formatMoney(sale.draft.totalMinor, sale.draft.currency)}',
+                                compact: true,
                               ),
-                              Text(
+                              FinancialAmount(
                                 'Received ${formatMoney(sale.paidMinor, sale.draft.currency)}',
+                                compact: true,
                               ),
-                              Text(
+                              FinancialAmount(
                                 'Due ${formatMoney(sale.remainingMinor, sale.draft.currency)}',
-                                style: TextStyle(
-                                  color: theme.colorScheme.error,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                                color: theme.colorScheme.error,
                               ),
                             ],
                           ),

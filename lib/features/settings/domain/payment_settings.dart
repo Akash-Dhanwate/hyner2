@@ -1,7 +1,14 @@
 import '../../inventory/domain/product.dart';
 import '../../sales/domain/sale.dart';
 
-enum BillLayout { right, centered }
+enum BillLayout {
+  right('Classic'),
+  centered('Studio'),
+  ledger('Ledger');
+
+  const BillLayout(this.label);
+  final String label;
+}
 
 enum BillTextSection {
   businessName('Business name'),

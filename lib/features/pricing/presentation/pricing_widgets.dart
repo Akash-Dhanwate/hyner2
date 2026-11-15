@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -17,6 +19,7 @@ class ValueField extends StatefulWidget {
     required this.onChanged,
     this.numeric = false,
     this.helper,
+    this.prefixIcon,
     this.large = false,
     this.lines = 1,
   });
@@ -24,6 +27,7 @@ class ValueField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool numeric, large;
   final String? helper;
+  final IconData? prefixIcon;
   final int lines;
   @override
   State<ValueField> createState() => _ValueFieldState();
@@ -72,6 +76,9 @@ class _ValueFieldState extends State<ValueField> {
       labelText: widget.label,
       helperText: widget.helper,
       helperMaxLines: 3,
+      prefixIcon: widget.prefixIcon == null
+          ? null
+          : Icon(widget.prefixIcon, size: 20),
     ),
   );
 }
@@ -419,16 +426,11 @@ class PricePanel extends StatelessWidget {
           Text(title, style: TextStyle(color: scheme.onSurfaceVariant)),
           Semantics(
             liveRegion: true,
-            child: Text(
+            child: FinancialAmount(
               moneyText(result.amounts.totalMinor, currency),
-              key: const ValueKey('price-total'),
-              style: TextStyle(
-                fontSize: compact ? 28 : 34,
-                height: 1.15,
-                fontWeight: FontWeight.w800,
-                color: scheme.primary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+              textKey: const ValueKey('price-total'),
+              color: scheme.primary,
+              prominent: true,
             ),
           ),
           if (!summaryOnly)

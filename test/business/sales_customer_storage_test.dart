@@ -188,6 +188,8 @@ void main() {
     await sales.create('owner', 'selected', bill);
     final after = (await db.query('customers')).single;
     expect({...after}..remove('updatedAt'), {...before}..remove('updatedAt'));
+    expect(after['whatsappOptInAt'], before['whatsappOptInAt']);
+    expect(before['whatsappOptInAt'], isNotNull);
     expect(
       (await sales.get('owner', 'selected')).draft.customerAddress,
       'Bill address',
@@ -441,7 +443,7 @@ void main() {
     );
   });
 
-  test('v10 enables all updates once and later exclusions survive checkout and reopen', () async {
+  test('legacy migration does not grant consent; explicit opt-in and opt-out persist', () async {
     final customer = await customers.save(
       'owner',
       const CustomerDraft(
@@ -454,9 +456,24 @@ void main() {
     final path = db.path;
     await store.close();
     final old = await databaseFactoryFfi.openDatabase(path);
+    await old.execute('ALTER TABLE customers DROP COLUMN whatsappOptInAt');
     await old.setVersion(10);
     await old.close();
-    expect((await customers.list('owner')).single.whatsappOptIn, isTrue);
+    final afterMigration = (await customers.list('owner')).single;
+    expect(afterMigration.whatsappOptIn, isFalse);
+    expect(afterMigration.whatsappOptInAt, isNull);
+    await customers.save(
+      'owner',
+      const CustomerDraft(
+        name: 'Asha Buyer',
+        phone: '9876543210',
+        whatsappOptIn: true,
+      ),
+      id: customer.id,
+    );
+    final explicitConsent = (await customers.list('owner')).single;
+    expect(explicitConsent.whatsappOptIn, isTrue);
+    expect(explicitConsent.whatsappOptInAt, isNotNull);
     await customers.save(
       'owner',
       const CustomerDraft(
@@ -473,7 +490,8 @@ void main() {
       'owner',
       const CustomerDraft(name: 'New customer', phone: '9123456780'),
     );
-    expect(added.whatsappOptIn, isTrue);
+    expect(added.whatsappOptIn, isFalse);
+    expect(added.whatsappOptInAt, isNull);
   });
 
   test(
@@ -538,7 +556,7 @@ void main() {
       await old.execute('ALTER TABLE sales DROP COLUMN customerAddress');
       await old.setVersion(8);
       await old.close();
-      expect(await (await store.databaseFor('owner')).getVersion(), 12);
+      expect(await (await store.databaseFor('owner')).getVersion(), 13);
       expect(await customers.list('owner'), hasLength(2));
       expect(
         (await customers.list('owner')).every((c) => c.address.isEmpty),

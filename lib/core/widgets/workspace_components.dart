@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'financial_amount.dart';
+
 /// Optional controls keep their editing state, focus/controller identity and
 /// validation registration when folded. Errors can reopen their section.
 class DisclosureSection extends StatefulWidget {
@@ -101,9 +103,11 @@ class RecordFact extends StatelessWidget {
     required this.label,
     required this.value,
     this.detail,
+    this.prominent = false,
   });
   final String label, value;
   final String? detail;
+  final bool prominent;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -115,10 +119,10 @@ class RecordFact extends StatelessWidget {
           if (detail != null) Text(detail!, style: theme.textTheme.bodySmall),
         ],
       );
-      final amount = Text(
+      final amount = FinancialAmount(
         value,
-        style: theme.textTheme.titleMedium,
-        softWrap: true,
+        prominent: prominent,
+        textAlign: TextAlign.end,
       );
       final stacked =
           constraints.maxWidth < 360 ||

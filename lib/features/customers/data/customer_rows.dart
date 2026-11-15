@@ -11,6 +11,9 @@ Customer customerFromRow(Map<String, Object?> row) => Customer(
   notes: row['notes']! as String,
   address: row['address'] as String? ?? '',
   whatsappOptIn: row['whatsappOptIn'] == 1,
+  whatsappOptInAt: row['whatsappOptInAt'] is String
+      ? DateTime.tryParse(row['whatsappOptInAt']! as String)
+      : null,
   createdAt: DateTime.parse(row['createdAt']! as String),
   updatedAt: DateTime.parse(row['updatedAt']! as String),
 );
@@ -69,16 +72,28 @@ Future<Customer> saveCustomerRow(
       );
     }
   }
+  var selectedOptIn = checkout && old != null
+      ? old.whatsappOptIn
+      : draft.whatsappOptIn;
+  if (selectedOptIn &&
+      old?.whatsappOptIn == true &&
+      old!.whatsappOptInAt == null) {
+    // Never manufacture a consent timestamp for an unverified legacy grant.
+    selectedOptIn = false;
+  }
+  final selectedOptInAt = !selectedOptIn
+      ? null
+      : old?.whatsappOptIn == true
+      ? old!.whatsappOptInAt
+      : now;
   final values = <String, Object?>{
     'id': customerId,
     'name': name,
     'phone': phone,
     'address': address,
     'notes': checkout && old != null ? old.notes : draft.notes.trim(),
-    'whatsappOptIn':
-        (checkout && old != null ? old.whatsappOptIn : draft.whatsappOptIn)
-        ? 1
-        : 0,
+    'whatsappOptIn': selectedOptIn ? 1 : 0,
+    'whatsappOptInAt': selectedOptInAt?.toIso8601String(),
     'identityKey': identity,
     'createdAt': (old?.createdAt ?? now).toIso8601String(),
     'updatedAt':

@@ -18,6 +18,7 @@ import '../../features/settings/data/local_payment_settings_repository.dart';
 import '../../core/storage/local_business_database.dart';
 import '../config/app_config.dart';
 import '../theme/appearance_repository.dart';
+import '../theme/theme_preset.dart';
 import 'app_dependencies.dart';
 
 Future<AuthRepository> _accountServices(AppConfig config) async {
@@ -46,9 +47,15 @@ Future<AppDependencies> bootstrap() async {
   final remote = _accountServices(config);
   final appearance = LocalAppearanceRepository();
   var initialTheme = ThemeMode.system;
+  var initialPreset = ThemePreset.sageGreen;
   String? notice;
   try {
-    initialTheme = await appearance.read().timeout(const Duration(seconds: 3));
+    final saved = await Future.wait<Object>([
+      appearance.read(),
+      appearance.readPreset(),
+    ]).timeout(const Duration(seconds: 3));
+    initialTheme = saved[0] as ThemeMode;
+    initialPreset = saved[1] as ThemePreset;
   } catch (_) {
     notice = 'Your saved appearance could not be loaded. The device theme is being used.';
   }
@@ -74,6 +81,7 @@ Future<AppDependencies> bootstrap() async {
     appearance: appearance,
     config: config,
     initialTheme: initialTheme,
+    initialPreset: initialPreset,
     startupNotice: notice,
   );
 }

@@ -25,14 +25,19 @@ abstract final class SaleCodec {
         if (entry.key is! String ||
             item is! Map ||
             item.length < 4 ||
-            item.length > 7 ||
+            item.length > 9 ||
             item['name'] is! String ||
             item['unitPriceMinor'] is! int ||
             item['quantity'] is! int ||
             item['totalMinor'] is! int ||
             item['unitCostMinor'] != null && item['unitCostMinor'] is! int ||
             item['pricing'] != null && item['pricing'] is! Map ||
-            item['pricing'] != null && item['unitCostMinor'] != 0 ||
+            item['pricing'] != null &&
+                item['unitCostMinor'] != 0 &&
+                item['inventorySku'] == null ||
+            item['inventorySku'] != null && item['inventorySku'] is! String ||
+            item['inventoryCostKnown'] != null &&
+                item['inventoryCostKnown'] is! bool ||
             item['parameters'] != null &&
                 (item['parameters'] is! List ||
                     (item['parameters'] as List).any(
@@ -54,6 +59,8 @@ abstract final class SaleCodec {
               : SalePriceSnapshot.fromJson(
                   Map<String, dynamic>.from(item['pricing'] as Map),
                 ),
+          inventorySku: item['inventorySku'] as String?,
+          inventoryCostKnown: item['inventoryCostKnown'] as bool? ?? false,
           parameters: [
             for (final entry in (item['parameters'] as List? ?? const []))
               ProductParameter.fromMap(entry as Map<dynamic, dynamic>),

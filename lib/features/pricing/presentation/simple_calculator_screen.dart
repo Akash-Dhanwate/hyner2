@@ -1,7 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../inventory/domain/product.dart' show parseMoney, parseUnits;
+import '../../inventory/presentation/inventory_controller.dart';
+import '../application/calculator_inventory_link.dart';
 import '../application/calculator_session.dart';
 import '../application/product_setup.dart';
 import '../application/simple_calculator.dart';
@@ -11,7 +15,7 @@ import '../domain/pricing_models.dart';
 import '../domain/universal/rate_card.dart';
 import 'pricing_widgets.dart';
 
-class SimpleCalculatorScreen extends StatefulWidget {
+class SimpleCalculatorScreen extends ConsumerStatefulWidget {
   const SimpleCalculatorScreen({
     super.key,
     required this.workspace,
@@ -20,7 +24,8 @@ class SimpleCalculatorScreen extends StatefulWidget {
   final QuickPriceWorkspace workspace;
   final String? profileId;
   @override
-  State<SimpleCalculatorScreen> createState() => _SimpleCalculatorScreenState();
+  ConsumerState<SimpleCalculatorScreen> createState() =>
+      _SimpleCalculatorScreenState();
 }
 
 class _SimpleRow {
@@ -45,7 +50,8 @@ class _SimpleRow {
       setup.data['rateUnit'] as String;
 }
 
-class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
+class _SimpleCalculatorScreenState
+    extends ConsumerState<SimpleCalculatorScreen> {
   late final writer = DraftWriter(widget.workspace.values);
   late String profileId = widget.profileId ?? newPricingId();
   String template = 'doors', name = 'Doors', currency = 'INR';
@@ -90,6 +96,35 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
               ? decimal
               : '${base.single.amount}';
           setup.data['simpleVarieties'] = simpleVarieties(product);
+          // Older simple calculators had no explicit stock setting. Editing
+          // and saving one now offers inventory linking by default; an
+          // existing saved opt-out remains respected below.
+          setup.data['inventoryTracking'] = true;
+          setup.data['inventorySku'] = product.inventorySku ?? '';
+          final savedSetup = await widget.workspace.values.read(
+            'setup_${widget.profileId}_${product.id}',
+          );
+          if (savedSetup != null) {
+            for (final key in [
+              'inventoryTracking',
+              'inventorySku',
+              'inventoryOpeningStock',
+              'inventoryReorderLevel',
+              'inventoryCost',
+              'inventoryPrice',
+            ]) {
+              if (savedSetup.containsKey(key)) {
+                setup.data[key] = savedSetup[key];
+              }
+            }
+            final variantCosts = Map<String, String>.from(
+              savedSetup['inventoryVariantCosts'] as Map? ?? const {},
+            );
+            for (final variety
+                in (setup.data['simpleVarieties'] as List).cast<Map>()) {
+              variety['purchaseCost'] = variantCosts[variety['id']] ?? '';
+            }
+          }
           rows.add(_SimpleRow(setup, original: product));
         }
       } else {
@@ -119,6 +154,11 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
         }
       }
       if (rows.isEmpty) rows = [_SimpleRow(quickProduct(template))];
+      if (widget.workspace.preview) {
+        for (final row in rows) {
+          row.setup.data['inventoryTracking'] = false;
+        }
+      }
       if (mounted) setState(() => loading = false);
     } catch (e) {
       if (mounted) {
@@ -159,9 +199,41 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
     );
   }
 
+  Future<UniversalProduct> _ensureInventoryProducts({
+    required String uid,
+    required _SimpleRow row,
+    required UniversalProduct product,
+  }) => linkCalculatorProductVariants(
+    linker: CalculatorInventoryLinker(ref.read(inventoryRepositoryProvider)),
+    uid: uid,
+    product: product,
+    category: 'QuickPrice',
+    costMinor: parseMoney(row.setup.data['inventoryCost'] as String? ?? '0.00'),
+    costMinorByRateId: {
+      for (final variety in row.varieties)
+        if ((variety['purchaseCost'] as String? ?? '').trim().isNotEmpty)
+          variety['id'] as String: parseMoney(
+            variety['purchaseCost'] as String,
+          ),
+    },
+    fallbackPriceMinor: parseMoney(
+      row.setup.data['inventoryPrice'] as String? ?? '0.00',
+    ),
+    openingStock: parseUnits(
+      row.setup.data['inventoryOpeningStock'] as String? ?? '100',
+    ),
+    reorderLevel: parseUnits(
+      row.setup.data['inventoryReorderLevel'] as String? ?? '10',
+    ),
+    isWorkspaceCurrent: () => ref.read(inventoryUidProvider) == uid,
+  );
+
   Future<void> _save() async {
     if (saving || loading || loadFailed || rows.isEmpty) return;
     FocusScope.of(context).unfocus();
+    final inventoryUid = widget.workspace.preview
+        ? null
+        : ref.read(inventoryUidProvider);
     setState(() {
       saving = true;
       error = null;
@@ -183,6 +255,11 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
           row.setup.data['taxPercent'] = taxPercent;
         }
         configureSimpleVarieties(row.setup, row.varieties);
+        row.setup.data['inventoryVariantCosts'] = {
+          for (final variety in row.varieties)
+            if ((variety['purchaseCost'] as String? ?? '').trim().isNotEmpty)
+              variety['id'] as String: variety['purchaseCost'] as String,
+        };
         final product = row.original == null
             ? row.setup.compile(widget.workspace.businessId, money)
             : replaceSimpleVarieties(
@@ -202,6 +279,26 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
           );
         }
       }
+      for (var index = 0; index < rows.length; index++) {
+        final row = rows[index];
+        final tracking = row.setup.data['inventoryTracking'] == true;
+        if (!tracking) {
+          row.setup.data['inventorySku'] = '';
+          products[index] = products[index].withInventorySku(null);
+          continue;
+        }
+        if (inventoryUid == null) {
+          throw StateError(
+            'Choose your account or device workspace, or turn off inventory tracking for this calculator.',
+          );
+        }
+        products[index] = await _ensureInventoryProducts(
+          uid: inventoryUid,
+          row: row,
+          product: products[index],
+        );
+        row.setup.data['inventorySku'] = products[index].inventorySku ?? '';
+      }
       final card = UniversalRateCardDraft(
         name: name.trim(),
         currency: money,
@@ -211,6 +308,10 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
         products: products,
       );
       await writer.flush();
+      if (inventoryUid != null &&
+          ref.read(inventoryUidProvider) != inventoryUid) {
+        throw StateError('Your workspace changed. Reopen calculator setup.');
+      }
       final stored = existing == null
           ? await widget.workspace.repository.createProfile(profileId, card)
           : await widget.workspace.repository.saveDraft(
@@ -219,6 +320,14 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
               expectedRevision: existing!.revision,
             );
       existing = stored;
+      if (inventoryUid != null) {
+        ref
+            .read(inventoryProvider.notifier)
+            .didWriteMany(
+              inventoryUid,
+              products.expand((product) => product.inventorySkuByRateId.values),
+            );
+      }
       for (final product in products) {
         await widget.workspace.values.approve(product.rule.tax);
       }
@@ -240,6 +349,21 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
           }
         }
         setup.data['simpleVarieties'] = row.varieties;
+        setup.data['inventoryTracking'] =
+            row.setup.data['inventoryTracking'] == true;
+        setup.data['inventorySku'] = row.setup.data['inventorySku'] ?? '';
+        setup.data['inventoryOpeningStock'] =
+            row.setup.data['inventoryOpeningStock'] ?? '100';
+        setup.data['inventoryReorderLevel'] =
+            row.setup.data['inventoryReorderLevel'] ?? '10';
+        setup.data['inventoryCost'] = row.setup.data['inventoryCost'] ?? '0.00';
+        setup.data['inventoryPrice'] =
+            row.setup.data['inventoryPrice'] ?? '0.00';
+        setup.data['inventoryVariantCosts'] = {
+          for (final variety in row.varieties)
+            if ((variety['purchaseCost'] as String? ?? '').trim().isNotEmpty)
+              variety['id'] as String: variety['purchaseCost'] as String,
+        };
         configureSimpleVarieties(setup, row.varieties);
         await widget.workspace.values.write(key, setup.data);
       }
@@ -369,6 +493,8 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
                               },
                             ),
                           ..._varietyFields(row),
+                          if (!widget.workspace.preview)
+                            ..._inventorySetup(row),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: TextButton.icon(
@@ -581,6 +707,19 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
             _changed();
           },
         ),
+        const SizedBox(height: 12),
+        ValueField(
+          key: ValueKey('variety-cost-${variety['id']}'),
+          label: 'Purchase cost per unit ($currency)',
+          numeric: true,
+          value: variety['purchaseCost'] as String? ?? '',
+          helper: 'Leave blank to use the product purchase cost below.',
+          prefixIcon: Icons.shopping_cart_outlined,
+          onChanged: (value) {
+            variety['purchaseCost'] = value;
+            _changed();
+          },
+        ),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
@@ -595,4 +734,115 @@ class _SimpleCalculatorScreenState extends State<SimpleCalculatorScreen> {
       ],
     ],
   ];
+
+  List<Widget> _inventorySetup(_SimpleRow row) {
+    final data = row.setup.data;
+    final tracking = data['inventoryTracking'] == true;
+    final inventorySku = (data['inventorySku'] as String? ?? '').trim();
+    final uid = ref.watch(inventoryUidProvider);
+    return [
+      const SizedBox(height: 8),
+      ExpansionTile(
+        key: PageStorageKey<String>('inventory-${row.setup.id}'),
+        tilePadding: EdgeInsets.zero,
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: const Text('Inventory and costs'),
+        subtitle: Text(
+          !tracking
+              ? 'Price only · does not change stock'
+              : inventorySku.isNotEmpty
+              ? 'Linked to inventory · $inventorySku'
+              : 'New stock item · ${data['inventoryOpeningStock']} units, alert at ${data['inventoryReorderLevel']}',
+        ),
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Track this product in Inventory'),
+            subtitle: const Text(
+              'Linked bill quantities will reduce stock automatically.',
+            ),
+            value: tracking,
+            onChanged: (value) {
+              data['inventoryTracking'] = value;
+              _changed();
+            },
+          ),
+          if (tracking && uid == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: MessageLine(
+                'Choose your account or device workspace before saving a stock-linked calculator.',
+              ),
+            ),
+          if (tracking && inventorySku.isNotEmpty)
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.link_outlined),
+              title: Text('Existing inventory item linked'),
+              subtitle: Text(
+                'Its current stock and cost are preserved. Edit them in Inventory.',
+              ),
+            ),
+          if (tracking && inventorySku.isEmpty) ...[
+            ValueField(
+              key: ValueKey('qp-opening-${row.setup.id}'),
+              label: 'Opening stock (units)',
+              numeric: true,
+              value: data['inventoryOpeningStock'] as String? ?? '100',
+              helper: 'Enter the actual count before saving.',
+              prefixIcon: Icons.inventory_2_outlined,
+              onChanged: (value) {
+                data['inventoryOpeningStock'] = value;
+                _changed();
+              },
+            ),
+            const SizedBox(height: 10),
+            ValueField(
+              key: ValueKey('qp-reorder-${row.setup.id}'),
+              label: 'Low-stock alert at (units)',
+              numeric: true,
+              value: data['inventoryReorderLevel'] as String? ?? '10',
+              prefixIcon: Icons.notifications_active_outlined,
+              onChanged: (value) {
+                data['inventoryReorderLevel'] = value;
+                _changed();
+              },
+            ),
+            const SizedBox(height: 10),
+            ValueField(
+              key: ValueKey('qp-cost-${row.setup.id}'),
+              label: 'Purchase cost per stock unit ($currency)',
+              numeric: true,
+              value: data['inventoryCost'] as String? ?? '0.00',
+              helper: 'Used to estimate gross profit on bills.',
+              prefixIcon: Icons.shopping_cart_outlined,
+              onChanged: (value) {
+                data['inventoryCost'] = value;
+                _changed();
+              },
+            ),
+            const SizedBox(height: 10),
+            ValueField(
+              key: ValueKey('qp-price-${row.setup.id}'),
+              label: 'Standard selling price per stock unit ($currency)',
+              numeric: true,
+              value: data['inventoryPrice'] as String? ?? '0.00',
+              helper: 'This inventory price is separate from measured QuickPrice rates.',
+              prefixIcon: Icons.sell_outlined,
+              onChanged: (value) {
+                data['inventoryPrice'] = value;
+                _changed();
+              },
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: MessageLine(
+                'A matching stock item keeps its quantity. Calculator variety rates and saved purchase cost update its prices.',
+              ),
+            ),
+          ],
+        ],
+      ),
+    ];
+  }
 }

@@ -70,13 +70,22 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final workspace = createPreviewWorkspace();
+      final quickPriceAuth = FakeAuth();
+      addTearDown(quickPriceAuth.close);
       await tester.pumpWidget(
         RepaintBoundary(
           key: captureKey,
-          child: MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: hynerTheme(Brightness.light),
-            home: SimpleCalculatorScreen(workspace: workspace),
+          child: ProviderScope(
+            overrides: [
+              dependenciesProvider.overrideWithValue(
+                testDependencies(quickPriceAuth, FakeProfiles()),
+              ),
+            ],
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: hynerTheme(Brightness.light),
+              home: SimpleCalculatorScreen(workspace: workspace),
+            ),
           ),
         ),
       );

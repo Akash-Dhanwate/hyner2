@@ -10,6 +10,8 @@ class SaleLine {
     required this.quantity,
     this.unitCostMinor = 0,
     this.pricing,
+    this.inventorySku,
+    this.inventoryCostKnown = false,
     List<ProductParameter> parameters = const [],
   }) : parameters = List.unmodifiable(parameters);
 
@@ -31,7 +33,15 @@ class SaleLine {
   final int unitPriceMinor, quantity, unitCostMinor;
   final List<ProductParameter> parameters;
   final SalePriceSnapshot? pricing;
-  bool get stockTracked => pricing == null;
+
+  /// Custom QuickPrice lines may consume one explicitly linked inventory item.
+  /// Existing plain inventory lines continue to use [sku] as their stock key.
+  final String? inventorySku;
+
+  /// True only when a purchase cost was known and captured at checkout.
+  final bool inventoryCostKnown;
+  String? get stockSku => pricing == null ? sku : inventorySku;
+  bool get stockTracked => stockSku != null;
   int get totalMinor => pricing?.totalMinor ?? unitPriceMinor * quantity;
   int get totalCostMinor => unitCostMinor * quantity;
 
@@ -43,7 +53,10 @@ class SaleLine {
         quantity > maxStock ||
         unitPriceMinor < 0 ||
         unitPriceMinor > maxMoneyMinor ||
-        stockTracked && unitPriceMinor > maxMoneyMinor ~/ quantity ||
+        stockSku != null && unitPriceMinor > maxMoneyMinor ~/ quantity ||
+        inventorySku != null &&
+            !RegExp(r'^[A-Z0-9][A-Z0-9_-]{0,39}$').hasMatch(inventorySku!) ||
+        inventoryCostKnown && (pricing == null || inventorySku == null) ||
         unitCostMinor < 0 ||
         unitCostMinor > maxMoneyMinor ~/ quantity) {
       throw inventoryInvalid(
@@ -55,7 +68,8 @@ class SaleLine {
       snapshot.validate();
       if (quantity != snapshot.quantity ||
           unitPriceMinor != snapshot.unitPriceMinor ||
-          unitCostMinor != 0) {
+          inventorySku == null && unitCostMinor != 0 ||
+          inventorySku != null && !inventoryCostKnown && unitCostMinor != 0) {
         throw inventoryInvalid(
           'Custom line quantity and price must match the saved quote, with no inventory cost.',
         );
@@ -70,6 +84,8 @@ class SaleLine {
     'unitCostMinor': unitCostMinor,
     'quantity': quantity,
     'totalMinor': totalMinor,
+    if (inventorySku != null) 'inventorySku': inventorySku,
+    if (inventorySku != null) 'inventoryCostKnown': inventoryCostKnown,
     'parameters': [for (final parameter in parameters) parameter.toMap()],
     if (pricing != null) 'pricing': pricing!.toJson(),
   };
@@ -173,7 +189,10 @@ class SaleDraft {
               item.name == line.name &&
               item.quantity == line.quantity &&
               item.unitPriceMinor == line.unitPriceMinor &&
-              item.unitCostMinor == line.unitCostMinor &&
+              (item.pricing != null
+                  ? item.inventorySku == line.inventorySku
+                  : item.unitCostMinor == line.unitCostMinor) &&
+              item.inventorySku == line.inventorySku &&
               item.pricing?.snapshotJson == line.pricing?.snapshotJson &&
               _parametersEqual(item.parameters, line.parameters),
         ),

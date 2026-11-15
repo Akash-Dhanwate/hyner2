@@ -21,7 +21,10 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     super.didChangeDependencies();
     if (_initialSearchApplied) return;
     _initialSearchApplied = true;
-    final initial = GoRouterState.of(context).uri.queryParameters['search'];
+    final route = GoRouterState.of(context);
+    final initial = route.extra is String
+        ? route.extra as String
+        : route.uri.queryParameters['search'];
     _search.text = initial ?? ref.read(salesProvider).search;
     if (initial != null) {
       final uid = ref.read(inventoryUidProvider);
@@ -53,11 +56,28 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Eyebrow('Saved bills'),
-          const SizedBox(height: 10),
-          Text(
-            'Sales history',
-            style: Theme.of(context).textTheme.headlineMedium,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Eyebrow('Saved bills'),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Sales history',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                key: const Key('sales-bill-preferences'),
+                tooltip: 'Bill preferences',
+                onPressed: () => context.push<void>('/bill-settings'),
+                icon: const Icon(Icons.tune_rounded),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Wrap(

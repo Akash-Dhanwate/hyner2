@@ -49,7 +49,7 @@ class LocalBusinessDatabase {
     return factory.openDatabase(
       '$directory/hyner_register_$fileKey.db',
       options: OpenDatabaseOptions(
-        version: 12,
+        version: 13,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) async {
           await db.execute('''
@@ -100,7 +100,8 @@ class LocalBusinessDatabase {
             identityKey TEXT,
             address TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL,
-            whatsappOptIn INTEGER NOT NULL DEFAULT 1,
+            whatsappOptIn INTEGER NOT NULL DEFAULT 0,
+            whatsappOptInAt TEXT,
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
           )
@@ -227,6 +228,24 @@ class LocalBusinessDatabase {
               'ALTER TABLE sales ADD COLUMN customerAddress TEXT',
             );
           }
+          if (oldVersion < 13) {
+            final customerColumns = await db.rawQuery(
+              'PRAGMA table_info(customers)',
+            );
+            if (!customerColumns.any(
+              (column) => column['name'] == 'whatsappOptInAt',
+            )) {
+              await db.execute(
+                'ALTER TABLE customers ADD COLUMN whatsappOptInAt TEXT',
+              );
+            }
+            // Earlier releases cannot distinguish an explicit opt-in from the
+            // schema-v11 migration's default grant. Require fresh consent.
+            await db.update('customers', {
+              'whatsappOptIn': 0,
+              'whatsappOptInAt': null,
+            });
+          }
           if (oldVersion < 10) {
             await db.execute(
               'ALTER TABLE customers ADD COLUMN identityKey TEXT',
@@ -236,9 +255,6 @@ class LocalBusinessDatabase {
             );
             await _createBillDocuments(db);
             await repairCustomerLinks(db);
-          }
-          if (oldVersion < 11) {
-            await db.update('customers', {'whatsappOptIn': 1});
           }
           if (oldVersion < 12) await _createPerformanceIndexes(db);
         },
@@ -281,8 +297,8 @@ class LocalBusinessDatabase {
     return {
       'format': 'hyner-local-backup',
       'version': 2,
-      // v11 changes defaults and v12 adds indexes; backup rows remain v10.
-      'schemaVersion': 10,
+      // Backup schema v11 adds timestamped consent; indexes are not exported.
+      'schemaVersion': 11,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'accountUid': uid,
       'tables': records,
@@ -296,7 +312,8 @@ class LocalBusinessDatabase {
         (version == 2 &&
             snapshot['schemaVersion'] != 8 &&
             snapshot['schemaVersion'] != 9 &&
-            snapshot['schemaVersion'] != 10)) {
+            snapshot['schemaVersion'] != 10 &&
+            snapshot['schemaVersion'] != 11)) {
       throw const FormatException('This is not a supported Hyner backup.');
     }
     if (snapshot['accountUid'] != uid) {
@@ -329,7 +346,9 @@ class LocalBusinessDatabase {
     final requiredTables = version == 2
         ? tables
               .where(
-                (t) => t != 'bill_documents' || snapshot['schemaVersion'] == 10,
+                (t) =>
+                    t != 'bill_documents' ||
+                    (snapshot['schemaVersion'] as int) >= 10,
               )
               .toList()
         : const ['products', 'movements', 'customers', 'sales', 'settings'];
@@ -363,7 +382,20 @@ class LocalBusinessDatabase {
             values['encoding'] ??= 'pdf';
             values['duplicatePdf'] = bytes;
           }
-          if (table == 'customers') values['identityKey'] = null;
+          if (table == 'customers') {
+            values['identityKey'] = null;
+            // v1/v2 backups written before v11 may include a consent value
+            // silently defaulted by an older migration. Only v11 timestamps
+            // can prove the owner/customer explicitly opted in.
+            if (snapshot['schemaVersion'] != 11 ||
+                values['whatsappOptIn'] != 1 ||
+                values['whatsappOptInAt'] is! String ||
+                DateTime.tryParse(values['whatsappOptInAt']! as String) ==
+                    null) {
+              values['whatsappOptIn'] = 0;
+              values['whatsappOptInAt'] = null;
+            }
+          }
           if (table == 'sales' && !values.containsKey('initialPaymentMinor')) {
             final total = _saleTotal(values);
             values['initialPaymentMinor'] = total;

@@ -7,7 +7,8 @@ class Customer {
     required this.phone,
     required this.notes,
     this.address = '',
-    this.whatsappOptIn = true,
+    this.whatsappOptIn = false,
+    this.whatsappOptInAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -18,6 +19,7 @@ class Customer {
   final String notes;
   final String address;
   final bool whatsappOptIn;
+  final DateTime? whatsappOptInAt;
   final DateTime createdAt;
   final DateTime updatedAt;
   String get reference => customerReference(name, phone, id);
@@ -57,7 +59,7 @@ class CustomerDraft {
     this.phone = '',
     this.notes = '',
     this.address = '',
-    this.whatsappOptIn = true,
+    this.whatsappOptIn = false,
   });
 
   final String name;

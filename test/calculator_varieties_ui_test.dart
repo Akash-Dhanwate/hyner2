@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,9 @@ import 'package:hyner/features/pricing/application/simple_calculator.dart';
 import 'package:hyner/features/pricing/data/preview_workspace.dart';
 import 'package:hyner/features/pricing/presentation/pricing_widgets.dart';
 import 'package:hyner/main.dart';
+import 'package:hyner/app/bootstrap/app_dependencies.dart';
+
+import 'business/support/fakes.dart';
 
 import 'calculator_ui_test.dart' show input;
 import 'owner_setup_ui_test.dart' show field, reveal;
@@ -48,10 +52,17 @@ void main() {
         });
       }
       final workspace = createPreviewWorkspace();
+      final auth = FakeAuth();
+      addTearDown(auth.close);
+      final profiles = FakeProfiles();
+      final dependencies = testDependencies(auth, profiles);
       final boundary = GlobalKey();
-      Widget app() => RepaintBoundary(
-        key: boundary,
-        child: HynerApp(workspace: Future.value(workspace)),
+      Widget app() => ProviderScope(
+        overrides: [dependenciesProvider.overrideWithValue(dependencies)],
+        child: RepaintBoundary(
+          key: boundary,
+          child: HynerApp(workspace: Future.value(workspace)),
+        ),
       );
       Future<void> capture(String name) async {
         if (!const bool.fromEnvironment('CAPTURE_VARIETIES')) return;
@@ -144,7 +155,7 @@ void main() {
         'Flush',
       );
       // Editing saved rates reconstructs varieties from the published rule.
-      await tester.tap(find.byTooltip('More options'));
+      await tester.tap(find.byTooltip('Calculator options'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Edit selling rates'));
       await tester.pumpAndSettle();

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/financial_amount.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../sales/presentation/sale_product_picker.dart';
@@ -287,11 +288,11 @@ class _PurchaseFormState extends ConsumerState<_PurchaseForm> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 6),
-                Text(
+                FinancialAmount(
                   preview == null
                       ? '—'
                       : formatMoney(preview.totalMinor, preview.currency),
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  prominent: true,
                 ),
                 if (_failure != null) ...[
                   const SizedBox(height: 16),

@@ -1,3 +1,5 @@
+import '../../../core/widgets/financial_amount.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -115,11 +117,12 @@ class PurchasesScreen extends ConsumerWidget {
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   onTap: () => context.push<void>('/purchases/${purchase.id}'),
-                  title: Text(
+                  title: FinancialAmount(
                     formatMoney(
                       purchase.draft.totalMinor,
                       purchase.draft.currency,
                     ),
+                    compact: true,
                   ),
                   subtitle: Text(
                     '${purchase.draft.supplierName ?? 'No supplier'} · ${purchaseDate(purchase.createdAt)}',
