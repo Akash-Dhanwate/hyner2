@@ -556,7 +556,7 @@ void main() {
       await old.execute('ALTER TABLE sales DROP COLUMN customerAddress');
       await old.setVersion(8);
       await old.close();
-      expect(await (await store.databaseFor('owner')).getVersion(), 13);
+      expect(await (await store.databaseFor('owner')).getVersion(), 14);
       expect(await customers.list('owner'), hasLength(2));
       expect(
         (await customers.list('owner')).every((c) => c.address.isEmpty),

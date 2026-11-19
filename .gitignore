@@ -46,3 +46,11 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Release credentials and server dependencies
+functions/node_modules/
+android/key.properties
+*.jks
+*.keystore
+.env
+.env.*

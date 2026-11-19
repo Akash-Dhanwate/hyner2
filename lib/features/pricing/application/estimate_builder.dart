@@ -445,6 +445,14 @@ final class EstimateRepository {
         : QuickPriceEstimate.fromJson(json, businessId: workspace.businessId);
   }
 
+  /// Removes only the in-progress estimate. Saved documents, rates, and
+  /// calculator configuration are stored separately.
+  Future<void> clear() {
+    final next = _tail.then((_) => _writer.write('estimate', null));
+    _tail = next.catchError((Object _) {});
+    return next;
+  }
+
   Future<void> save(QuickPriceEstimate estimate) {
     if (estimate.businessId != workspace.businessId) {
       throw ArgumentError('This estimate belongs to another business.');

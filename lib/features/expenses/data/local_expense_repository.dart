@@ -60,6 +60,11 @@ class LocalExpenseRepository implements ExpenseRepository {
   @override
   Future<void> delete(String uid, String id) async {
     _checkUid(uid);
+    if (id.startsWith('return_loss_')) {
+      throw const FormatException(
+        'This cost is part of an audited customer return and cannot be deleted separately.',
+      );
+    }
     final db = await _store.databaseFor(uid);
     await db.delete('operating_expenses', where: 'id = ?', whereArgs: [id]);
   }

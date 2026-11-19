@@ -39,9 +39,8 @@ class QuickPriceWorkspace {
   final WorkspaceValues values;
   final bool preview;
   final Future<void> Function()? onClose;
-  Future<void> close() async {
-    await onClose?.call();
-  }
+  Future<void>? _closing;
+  Future<void> close() => _closing ??= onClose?.call() ?? Future<void>.value();
 
   Future<List<PricingProfileSummary>> profiles() async {
     final result = <PricingProfileSummary>[];

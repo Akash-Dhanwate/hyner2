@@ -88,6 +88,11 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
         state == AppLifecycleState.paused) {
       unawaited(writer.flush());
     }
+    if (state == AppLifecycleState.detached) {
+      // Keep reusable rates and calculator configuration, but not a previous
+      // customer's in-progress estimate.
+      unawaited(estimateRepository.clear());
+    }
   }
 
   void _changed() {

@@ -25,7 +25,7 @@ class BillPdfService {
     bool quotation = false,
   }) async {
     final document = pw.Document(
-      title: '${quotation ? 'Quotation' : 'Bill'} ${sale.id}',
+      title: '${quotation ? 'Quotation' : 'Bill'} ${sale.reference}',
       author: settings.merchantName.isEmpty ? 'Hyner' : settings.merchantName,
     );
     final compact = copy == BillCopy.duplicate;
@@ -188,7 +188,8 @@ class BillPdfService {
       ],
       if (sale.draft.customerName != null)
         pw.Container(
-          padding: pw.EdgeInsets.all(compact ? 6 : 10),
+          width: double.infinity,
+          padding: pw.EdgeInsets.all(compact ? 10 : 14),
           decoration: pw.BoxDecoration(
             color: _pale,
             borderRadius: pw.BorderRadius.circular(5),
@@ -197,33 +198,35 @@ class BillPdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'Customer name',
+                'Customer Name: ${sale.draft.customerName!.trim()}',
                 style: pw.TextStyle(
                   color: customerColor,
-                  fontSize: quotation ? 10 : 9,
-                  fontWeight: quotation
-                      ? pw.FontWeight.bold
-                      : pw.FontWeight.normal,
-                ),
-              ),
-              pw.Text(
-                sale.draft.customerName!,
-                style: pw.TextStyle(
-                  color: customerColor,
-                  fontSize: quotation ? (compact ? 13 : 16) : 10,
+                  fontSize: compact ? 13 : 16,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
-              if (sale.draft.customerPhone?.trim().isNotEmpty == true)
+              if (sale.draft.customerPhone?.trim().isNotEmpty == true) ...[
+                pw.SizedBox(height: compact ? 5 : 7),
                 pw.Text(
-                  'Mobile: ${sale.draft.customerPhone!}',
-                  style: pw.TextStyle(color: customerColor, fontSize: 9),
+                  'Mobile Number: ${sale.draft.customerPhone!.trim()}',
+                  style: pw.TextStyle(
+                    color: customerColor,
+                    fontSize: compact ? 11 : 13,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              if (sale.draft.customerAddress?.trim().isNotEmpty == true)
+              ],
+              if (sale.draft.customerAddress?.trim().isNotEmpty == true) ...[
+                pw.SizedBox(height: compact ? 5 : 7),
                 pw.Text(
-                  sale.draft.customerAddress!,
-                  style: pw.TextStyle(color: customerColor, fontSize: 9),
+                  'Address: ${sale.draft.customerAddress!.trim()}',
+                  style: pw.TextStyle(
+                    color: customerColor,
+                    fontSize: compact ? 11 : 13,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
+              ],
             ],
           ),
         ),
@@ -236,7 +239,7 @@ class BillPdfService {
       ],
       pw.SizedBox(height: 8),
       pw.Text(
-        saleDate(sale.createdAt),
+        'Date: ${saleDate(sale.createdAt)}',
         style: pw.TextStyle(
           color: billColor,
           fontSize: compact ? 11 : 13,
@@ -245,7 +248,7 @@ class BillPdfService {
       ),
       pw.SizedBox(height: 3),
       pw.Text(
-        'Reference: ${sale.id}',
+        'Reference: ${sale.reference}',
         style: pw.TextStyle(color: billColor, fontSize: 8),
       ),
       pw.SizedBox(height: compact ? 10 : 18),
@@ -316,6 +319,27 @@ class BillPdfService {
                     color: totalColor,
                     large: true,
                   ),
+                  if (!quotation && sale.creditMinor > 0) ...[
+                    _totalRow(
+                      'Return / void credit',
+                      sale.creditMinor,
+                      sale.draft.currency,
+                      color: totalColor,
+                    ),
+                    _totalRow(
+                      'Net after credits',
+                      sale.netTotalMinor,
+                      sale.draft.currency,
+                      color: totalColor,
+                    ),
+                  ],
+                  if (!quotation && sale.refundDueMinor > 0)
+                    _totalRow(
+                      'Refund due',
+                      sale.refundDueMinor,
+                      sale.draft.currency,
+                      color: totalColor,
+                    ),
                   if (!quotation)
                     _totalRow(
                       'Paid',
@@ -333,8 +357,51 @@ class BillPdfService {
                 ],
               ),
             ),
-            pw.SizedBox(height: compact ? (signature == null ? 2 : 8) : 24),
-            if (signature != null)
+            if (!quotation) ...[
+              pw.SizedBox(height: compact ? 14 : 20),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.SizedBox(
+                    width: compact ? 120 : 155,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        pw.SizedBox(height: compact ? 42 : 60),
+                        pw.Divider(color: _line, thickness: .7),
+                        pw.Text(
+                          'Customer Signature',
+                          style: pw.TextStyle(
+                            color: footerColor,
+                            fontSize: compact ? 9 : 10,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (signature != null)
+                    pw.Column(
+                      mainAxisSize: pw.MainAxisSize.min,
+                      children: [
+                        pw.Image(
+                          signature,
+                          width: compact ? 80 : 110,
+                          height: compact ? 26 : 42,
+                        ),
+                        pw.Text(
+                          'Authorized signature',
+                          style: pw.TextStyle(color: footerColor, fontSize: 8),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: compact ? 8 : 12),
+            ],
+            if (quotation) pw.SizedBox(height: compact ? 8 : 24),
+            if (quotation && signature != null)
               pw.Align(
                 alignment: centered
                     ? pw.Alignment.center
@@ -354,7 +421,8 @@ class BillPdfService {
                   ],
                 ),
               ),
-            if (signature != null) pw.SizedBox(height: compact ? 4 : 8),
+            if (quotation && signature != null)
+              pw.SizedBox(height: compact ? 4 : 8),
             if (!compact) pw.Divider(color: _line),
             if (!compact) pw.SizedBox(height: 8),
             pw.Text(

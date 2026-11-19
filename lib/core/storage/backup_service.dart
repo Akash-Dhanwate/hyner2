@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'local_business_database.dart';
+import 'full_backup_service.dart';
+import 'pricing_database.dart';
 import 'generated_backup_files.dart';
 
 class BackupService {
@@ -19,6 +21,31 @@ class BackupService {
         'Choose a non-empty backup no larger than 64 MiB.',
       );
     }
+  }
+
+  static Future<bool> exportComplete(
+    String uid,
+    PricingDatabase pricing,
+  ) async {
+    final service = FullBackupService(
+      business: LocalBusinessDatabase.instance,
+      pricing: pricing,
+      directory: await getApplicationSupportDirectory(),
+    );
+    final bytes = await service.export(uid);
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save complete Hyner backup',
+      fileName: 'hyner-$stamp.hyner',
+      type: FileType.custom,
+      allowedExtensions: ['hyner'],
+      bytes: bytes,
+    );
+    if (path == null) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      await File(path).writeAsBytes(bytes, flush: true);
+    }
+    return true;
   }
 
   static Future<void> exportAndShare(String uid) async {
@@ -47,10 +74,11 @@ class BackupService {
   static Future<bool> pickAndRestore(
     String uid, {
     bool Function()? isWorkspaceCurrent,
+    PricingDatabase? pricing,
   }) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json'],
+      allowedExtensions: ['json', 'hyner'],
       withData: false,
     );
     if (result == null) return false;
@@ -62,6 +90,7 @@ class BackupService {
         'The selected backup file could not be read.',
       );
     }
+    validateBackupFileSize(await File(path).length());
     final bytes = await File(path).readAsBytes();
     validateBackupFileSize(bytes.length);
     if (isWorkspaceCurrent != null && !isWorkspaceCurrent()) return false;
@@ -69,7 +98,20 @@ class BackupService {
     if (snapshot is! Map<String, dynamic>) {
       throw const FormatException('The selected file is not a valid backup.');
     }
-    await LocalBusinessDatabase.instance.restoreFor(uid, snapshot);
+    if (snapshot['format'] == 'hyner-full-backup') {
+      if (pricing == null) {
+        throw const FormatException(
+          'Open the calculator workspace before restoring a complete backup.',
+        );
+      }
+      await FullBackupService(
+        business: LocalBusinessDatabase.instance,
+        pricing: pricing,
+        directory: await getApplicationSupportDirectory(),
+      ).restore(uid, bytes, isCurrent: isWorkspaceCurrent ?? () => true);
+    } else {
+      await LocalBusinessDatabase.instance.restoreFor(uid, snapshot);
+    }
     return true;
   }
 }

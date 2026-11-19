@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hyner/app/bootstrap/app_dependencies.dart';
 import 'package:hyner/features/pricing/data/preview_workspace.dart';
+import 'package:hyner/features/pricing/application/workspace.dart';
 import 'package:hyner/features/inventory/domain/product.dart';
 import 'package:hyner/features/pricing/presentation/pricing_widgets.dart';
 import 'package:hyner/main.dart';
@@ -35,6 +36,15 @@ Future<void> reveal(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
+QuickPriceWorkspace ownerWorkspace() {
+  final memory = createPreviewWorkspace();
+  return QuickPriceWorkspace(
+    businessId: memory.businessId,
+    values: memory.values,
+    repository: memory.repository,
+  );
+}
+
 void main() {
   testWidgets(
     'door setup needs rates only, saves once and reopens without setup',
@@ -43,7 +53,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final workspace = createPreviewWorkspace();
+      final workspace = ownerWorkspace();
       final auth = FakeAuth(user: testIdentity);
       final inventory = FakeInventory();
       addTearDown(auth.close);
@@ -87,8 +97,8 @@ void main() {
       expect(find.text('QuickPrice'), findsOneWidget);
       final stockItem = inventory.products(testIdentity.uid).values.single;
       expect(stockItem.name, 'Basic flush door');
-      expect(stockItem.quantity, 50);
-      expect(stockItem.reorderLevel, 5);
+      expect(stockItem.quantity, 100);
+      expect(stockItem.reorderLevel, 10);
       await tester.enterText(input('height'), '84');
       await tester.enterText(input('width'), '36');
       await tester.pumpAndSettle();
@@ -141,7 +151,7 @@ void main() {
   testWidgets('invalid selling rate keeps setup editable and cannot publish', (
     tester,
   ) async {
-    final workspace = createPreviewWorkspace();
+    final workspace = ownerWorkspace();
     final auth = FakeAuth();
     addTearDown(auth.close);
     await tester.pumpWidget(
@@ -176,7 +186,7 @@ void main() {
   testWidgets('a same-name inventory item is linked without resetting stock', (
     tester,
   ) async {
-    final workspace = createPreviewWorkspace();
+    final workspace = ownerWorkspace();
     final auth = FakeAuth(user: testIdentity);
     final inventory = FakeInventory();
     addTearDown(auth.close);
@@ -225,9 +235,9 @@ void main() {
     expect(inventory.products(testIdentity.uid), hasLength(1));
     final preserved = inventory.products(testIdentity.uid).values.single;
     expect(preserved.quantity, 17);
-    expect(preserved.reorderLevel, 3);
+    expect(preserved.reorderLevel, 10);
     expect(preserved.costMinor, 42000);
-    expect(preserved.priceMinor, 55000);
+    expect(preserved.priceMinor, 15000);
     expect(tester.takeException(), isNull);
   });
 }

@@ -28,9 +28,14 @@ String billPdfFilename({
   required String? customerPhone,
   required String saleId,
   bool includeMobile = true,
+  int? billNumber,
   bool duplicate = false,
 }) {
   final name = _cleanFilenamePart(customerName?.trim() ?? '', maxRunes: 52);
+  if (billNumber != null) {
+    if (billNumber < 1) throw ArgumentError.value(billNumber, 'billNumber');
+    return '${name.isEmpty ? 'Customer' : name} - Bill $billNumber${duplicate ? ' - Duplicate' : ''}.pdf';
+  }
   final digits = (customerPhone ?? '').replaceAll(RegExp(r'\D'), '');
   final phone = includeMobile && digits.length >= 8 && digits.length <= 15
       ? digits
@@ -82,7 +87,7 @@ class BillPdfFilenamePreferences {
   String _key(String uid) => 'hyner.pdf.include_customer_mobile.$uid';
 
   Future<bool> includeMobile(String uid) async =>
-      await _store.getBool(_key(uid)) ?? true;
+      await _store.getBool(_key(uid)) ?? false;
 
   Future<void> setIncludeMobile(String uid, bool value) =>
       _store.setBool(_key(uid), value);
@@ -95,7 +100,8 @@ class BillPdfFilenamePreferences {
     customerName: sale.draft.customerName,
     customerPhone: sale.draft.customerPhone,
     saleId: sale.id,
-    includeMobile: await includeMobile(uid),
+    billNumber: sale.billNumber,
+    includeMobile: false,
     duplicate: duplicate,
   );
 }

@@ -88,12 +88,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   }
 
   Future<void> _adjust(Product product) async {
+    final uid = ref.read(inventoryUidProvider);
+    if (uid == null) return;
     final changed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StockAdjustmentDialog(product: product),
+      builder: (context) => StockAdjustmentDialog(product: product, uid: uid),
     );
-    if (mounted && changed == true) _refresh();
+    if (mounted && changed == true && ref.read(inventoryUidProvider) == uid) {
+      _refresh();
+    }
   }
 
   @override

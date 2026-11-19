@@ -72,13 +72,27 @@ void main() {
       await old.setVersion(11);
       await old.close();
       final upgraded = await store.databaseFor('owner');
-      expect(await upgraded.getVersion(), 13);
-      expect(await upgraded.query('sales'), originalSales);
+      expect(await upgraded.getVersion(), 14);
+      final migratedSales = await upgraded.query('sales');
+      expect(
+        [
+          for (final row in migratedSales) {...row}..remove('billNumber'),
+        ],
+        [
+          for (final row in originalSales) {...row}..remove('billNumber'),
+        ],
+      );
+      expect(migratedSales.single['billNumber'], 1);
       final migratedCustomers = await upgraded.query('customers');
       expect(migratedCustomers, hasLength(originalCustomers.length));
       expect(migratedCustomers.single['whatsappOptIn'], 0);
       expect(migratedCustomers.single['whatsappOptInAt'], isNull);
-      expect(await upgraded.query('settings'), originalSettings);
+      expect(
+        (await upgraded.query('settings'))
+            .where((row) => row['key'] != 'bill-sequence')
+            .toList(),
+        originalSettings.where((row) => row['key'] != 'bill-sequence').toList(),
+      );
       final indexes = (await upgraded.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='index'",
       )).map((row) => row['name']).toSet();
@@ -90,7 +104,7 @@ void main() {
           'sales_currency_created',
         ]),
       );
-      expect((await store.exportFor('owner'))['schemaVersion'], 11);
+      expect((await store.exportFor('owner'))['schemaVersion'], 12);
       final followupPlan = (await upgraded.rawQuery(
         'EXPLAIN QUERY PLAN SELECT * FROM sales WHERE followupAt IS NOT NULL ORDER BY followupAt ASC',
       )).map((row) => row['detail']).join(' ');

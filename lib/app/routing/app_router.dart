@@ -30,13 +30,14 @@ import '../../features/sales/presentation/sale_editor_screen.dart';
 import '../../features/sales/presentation/sale_detail_screen.dart';
 import '../../features/sales/presentation/remaining_payments_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/settings/presentation/privacy_screen.dart';
 import '../../features/workspace/presentation/workspace_shell.dart';
 import '../../features/whatsapp/presentation/whatsapp_screen.dart';
 import '../../features/pricing/presentation/workspace_quickprice_screen.dart';
 
 String? sessionRedirect(SessionState session, String path) {
   final public = path == '/welcome' || path == '/sign-in';
-  if (path == '/quickprice') return null;
+  if (path == '/quickprice' || path == '/privacy') return null;
   return switch (session.status) {
     SessionStatus.loading => path == '/splash' ? null : '/splash',
     SessionStatus.signedOut ||
@@ -96,6 +97,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       _page('/help', const HelpScreen()),
+      _page('/privacy', const PrivacyScreen()),
       GoRoute(
         path: '/account-setup',
         builder: (context, state) => const AccountSetupScreen(),
@@ -125,6 +127,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/sales/new',
         builder: (context, state) => SaleEditorScreen(
           customerId: state.uri.queryParameters['customerId'],
+          replacesSaleId: state.uri.queryParameters['replaces'],
         ),
       ),
       GoRoute(

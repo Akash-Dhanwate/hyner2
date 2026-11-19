@@ -5198,3 +5198,27 @@ Evidence: `lib/features/pricing/application/calculator_inventory_link.dart`, `li
 ### 30.4 Stock alert and Inventory edit visibility
 
 `lib/core/notifications/local_notification_service.dart` now labels a nonpositive count as “Out of stock” and requests immediate display for stock alerts after Inventory writes. Android permission and device delivery are required; automated repository tests do not establish that a physical device showed the notification. Renaming a product through `lib/features/inventory/presentation/product_editor_screen.dart` clears the stale name search before refreshing the list, preventing the updated product from vanishing merely because it no longer matches the old query. See `test/business/inventory_controller_test.dart`.
+
+
+## 31. Launch workflows and sequential bill numbers (0.9.0, 2026-11-17)
+
+The current implementation is described in [0.9.0 launch notes](launch-0.9.0.md).
+This section supersedes earlier descriptions of register-only backups,
+UUID-based visible bill references, unstructured payment methods, missing
+customer returns, and deletion as the primary correction flow.
+
+The local register migrates additively to schema 14, assigning permanent
+workspace-scoped bill numbers and adding financial entries and customer return
+records. Original UUIDs and immutable pricing snapshots remain intact. PDFs use
+customer names and serial numbers. Complete `.hyner` backups cover both local
+stores and required images/preferences, with coordinated capture and durable
+restore recovery. Customer/supplier payments, reversals, return credits, refunds,
+voids and linked replacements are available from document details. Public
+privacy/deletion deployment and production signing remain external release
+configuration, and physical Android acceptance remains outstanding.
+
+Verification: 801 Flutter tests passed, four skipped; static analysis is clean.
+The account-deletion handler's five tests passed. Version 0.9.0+17 split APKs were
+built and verified with the existing development signing identity. See the
+launch notes and `build/optimization/artifacts-launch-ready-split.json` for exact
+artifact evidence; these are sideload test builds, not a public Play release.

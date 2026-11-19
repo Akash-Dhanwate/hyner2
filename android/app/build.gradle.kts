@@ -5,6 +5,13 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Sideload test builds retain the existing certificate. Store builds opt in
+// explicitly and fail if any upload-key configuration is missing.
+val productionBuild = providers.environmentVariable("HYNER_PRODUCTION").orNull == "true"
+fun releaseSecret(name: String): String = providers.environmentVariable(name).orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: throw GradleException("Production signing requires $name")
+
 android {
     namespace = "com.hyner.hyner"
     compileSdk = flutter.compileSdkVersion
@@ -30,11 +37,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (productionBuild) {
+            create("production") {
+                storeFile = file(releaseSecret("HYNER_KEYSTORE_PATH"))
+                storePassword = releaseSecret("HYNER_STORE_PASSWORD")
+                keyAlias = releaseSecret("HYNER_KEY_ALIAS")
+                keyPassword = releaseSecret("HYNER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (productionBuild) "production" else "debug")
         }
     }
 }

@@ -123,8 +123,10 @@ void main() {
         expect(text, isNot(contains('Customer Copy')));
         expect(text, isNot(contains('Seller Copy')));
         expect('Asha Customer'.allMatches(text), hasLength(1));
-        expect(text, contains('Mobile: 9876543210'));
-        expect(text, contains('42 Market Road, Pune'));
+        expect(text, contains('Customer Name: Asha Customer'));
+        expect(text, contains('Mobile Number: 9876543210'));
+        expect(text, contains('Address: 42 Market Road, Pune'));
+        expect(text, contains('Date: ${saleDate(sale.createdAt)}'));
         expect(text, contains('ASHA-CUSTOMER-9876543210-ABC123'));
         for (final specification in [
           'Height: 84 in',
@@ -147,12 +149,13 @@ void main() {
         }
         expect(text, isNot(contains('99.99'))); // purchase cost remains private
         expect(text, contains('Authorized signature'));
+        expect('Customer Signature'.allMatches(text), hasLength(1));
         expect(
           RegExp(r'/Subtype\s*/Image').hasMatch(latin1.decode(bytes)),
           isTrue,
         );
         if (const bool.fromEnvironment('CAPTURE_BILL_PDF')) {
-          final folder = Directory('build/verification/ux-0.5.0')
+          final folder = Directory('build/verification/bill-layout')
             ..createSync(recursive: true);
           File('${folder.path}/bill-${copy.name}.pdf').writeAsBytesSync(bytes);
         }
@@ -199,6 +202,7 @@ void main() {
       expect(text, isNot(contains('Original')));
       expect(text, isNot(contains('Duplicate')));
       expect(text, contains('Sales bill'));
+      expect(text, contains('Customer Signature'));
       expect(text, isNot(contains('not configured')));
     },
   );

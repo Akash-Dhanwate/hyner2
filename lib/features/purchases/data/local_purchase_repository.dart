@@ -1,4 +1,7 @@
 import 'dart:convert';
+
+import '../../sales/data/local_financial_repository.dart';
+
 import 'dart:math';
 
 import 'package:sqflite/sqflite.dart';
@@ -393,31 +396,17 @@ class LocalPurchaseRepository implements PurchaseRepository {
 
   @override
   Future<void> markPaid(String uid, String id) async {
-    _checkUid(uid);
-    final db = await _store.databaseFor(uid);
-    await db.transaction((tx) async {
-      final rows = await tx.query(
-        'purchases',
-        where: 'id = ?',
-        whereArgs: [id],
-        limit: 1,
-      );
-      if (rows.isEmpty) {
-        throw inventoryInvalid('This purchase could not be found.');
-      }
-      if (rows.single['paymentStatus'] == PurchasePaymentStatus.paid.name) {
-        return;
-      }
-      await tx.update(
-        'purchases',
-        {
-          'paymentStatus': PurchasePaymentStatus.paid.name,
-          'paidAt': DateTime.now().toUtc().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+    final financial = LocalFinancialRepository(_store);
+    final current = await financial.balance(uid, 'purchase', id);
+    if (current.dueMinor == 0) return;
+    await financial.recordPayment(
+      uid,
+      'purchase',
+      id,
+      current.dueMinor,
+      operationId: newId(),
+      date: DateTime.now(),
+    );
   }
 }
 

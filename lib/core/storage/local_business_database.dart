@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
+import 'launch_migration.dart';
 import '../../features/customers/data/customer_rows.dart';
 import '../../features/sales/data/bill_document_codec.dart';
 import '../../features/sales/domain/sale_price_snapshot.dart';
@@ -49,7 +50,7 @@ class LocalBusinessDatabase {
     return factory.openDatabase(
       '$directory/hyner_register_$fileKey.db',
       options: OpenDatabaseOptions(
-        version: 13,
+        version: 14,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) async {
           await db.execute('''
@@ -147,6 +148,7 @@ class LocalBusinessDatabase {
           await _createAccountingTable(db);
           await _createBillDocuments(db);
           await _createPerformanceIndexes(db);
+          await installLaunchSchema(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createPurchaseTables(db);
@@ -257,6 +259,8 @@ class LocalBusinessDatabase {
             await repairCustomerLinks(db);
           }
           if (oldVersion < 12) await _createPerformanceIndexes(db);
+          if (oldVersion < 14) await installLaunchSchema(db);
+          await installLaunchSchema(db);
         },
       ),
     );
@@ -265,7 +269,10 @@ class LocalBusinessDatabase {
   /// Creates a portable, human-readable snapshot for manual backup. The
   /// snapshot is intentionally exported through the OS share sheet; it is not
   /// uploaded automatically and never contains authentication tokens.
-  Future<Map<String, dynamic>> exportFor(String uid) async {
+  Future<Map<String, dynamic>> exportFor(
+    String uid, {
+    Future<void> Function()? captureRelatedStores,
+  }) async {
     final db = await databaseFor(uid);
     final tables = <String>[
       'products',
@@ -281,6 +288,8 @@ class LocalBusinessDatabase {
       'purchase_orders',
       'accounting_entries',
       'bill_documents',
+      'financial_entries',
+      'sale_returns',
     ];
     final records = await db.transaction((tx) async {
       final records = <String, List<Map<String, Object?>>>{};
@@ -292,20 +301,26 @@ class LocalBusinessDatabase {
           records[table] = rows;
         }
       }
+      await captureRelatedStores?.call();
       return records;
     });
     return {
       'format': 'hyner-local-backup',
       'version': 2,
-      // Backup schema v11 adds timestamped consent; indexes are not exported.
-      'schemaVersion': 11,
+      // Backup schema v12 includes permanent bill numbers and financial audit rows.
+      'schemaVersion': 12,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'accountUid': uid,
       'tables': records,
     };
   }
 
-  Future<void> restoreFor(String uid, Map<String, dynamic> snapshot) async {
+  Future<void> restoreFor(
+    String uid,
+    Map<String, dynamic> snapshot, {
+    bool validateOnly = false,
+    Future<void> Function()? beforeCommit,
+  }) async {
     final version = snapshot['version'];
     if (snapshot['format'] != 'hyner-local-backup' ||
         (version != 1 && version != 2) ||
@@ -313,7 +328,8 @@ class LocalBusinessDatabase {
             snapshot['schemaVersion'] != 8 &&
             snapshot['schemaVersion'] != 9 &&
             snapshot['schemaVersion'] != 10 &&
-            snapshot['schemaVersion'] != 11)) {
+            snapshot['schemaVersion'] != 11 &&
+            snapshot['schemaVersion'] != 12)) {
       throw const FormatException('This is not a supported Hyner backup.');
     }
     if (snapshot['accountUid'] != uid) {
@@ -327,6 +343,8 @@ class LocalBusinessDatabase {
     }
     final db = await databaseFor(uid);
     const tables = [
+      'sale_returns',
+      'financial_entries',
       'bill_documents',
       'operating_expenses',
       'quotations',
@@ -347,8 +365,10 @@ class LocalBusinessDatabase {
         ? tables
               .where(
                 (t) =>
-                    t != 'bill_documents' ||
-                    (snapshot['schemaVersion'] as int) >= 10,
+                    (t != 'bill_documents' ||
+                        (snapshot['schemaVersion'] as int) >= 10) &&
+                    (!const ['financial_entries', 'sale_returns'].contains(t) ||
+                        (snapshot['schemaVersion'] as int) >= 12),
               )
               .toList()
         : const ['products', 'movements', 'customers', 'sales', 'settings'];
@@ -360,52 +380,96 @@ class LocalBusinessDatabase {
         'The backup contains missing or invalid tables.',
       );
     }
-    await db.transaction((tx) async {
-      for (final table in tables) {
-        await tx.delete(table);
-      }
-      for (final table in tables.reversed) {
-        final rows = rawTables[table];
-        if (rows is! List) continue;
-        for (final row in rows) {
-          if (row is! Map) {
-            throw const FormatException('The backup contains an invalid row.');
-          }
-          final values = Map<String, Object?>.from(row);
-          if (table == 'bill_documents') {
-            final encoded = values['duplicatePdf'];
-            if (encoded is! String || encoded.length > 8 * 1024 * 1024) {
-              throw const FormatException('Invalid archived PDF.');
-            }
-            final bytes = base64Decode(encoded);
-            BillDocumentCodec.decodePdf(bytes, encoding: values['encoding']);
-            values['encoding'] ??= 'pdf';
-            values['duplicatePdf'] = bytes;
-          }
-          if (table == 'customers') {
-            values['identityKey'] = null;
-            // v1/v2 backups written before v11 may include a consent value
-            // silently defaulted by an older migration. Only v11 timestamps
-            // can prove the owner/customer explicitly opted in.
-            if (snapshot['schemaVersion'] != 11 ||
-                values['whatsappOptIn'] != 1 ||
-                values['whatsappOptInAt'] is! String ||
-                DateTime.tryParse(values['whatsappOptInAt']! as String) ==
-                    null) {
-              values['whatsappOptIn'] = 0;
-              values['whatsappOptInAt'] = null;
-            }
-          }
-          if (table == 'sales' && !values.containsKey('initialPaymentMinor')) {
-            final total = _saleTotal(values);
-            values['initialPaymentMinor'] = total;
-            values['expectedPaymentMinor'] = total;
-          }
-          await tx.insert(table, values);
+    try {
+      await db.transaction((tx) async {
+        final sequence = await tx.query(
+          'settings',
+          where: 'key = ?',
+          whereArgs: ['bill-sequence'],
+        );
+        final high = sequence.isEmpty
+            ? 0
+            : int.tryParse(sequence.single['value']! as String) ?? 0;
+        for (final table in tables) {
+          await tx.delete(table);
         }
-      }
-      await repairCustomerLinks(tx);
-    });
+        for (final table in tables.reversed) {
+          final rows = rawTables[table];
+          if (rows is! List) continue;
+          for (final row in rows) {
+            if (row is! Map) {
+              throw const FormatException(
+                'The backup contains an invalid row.',
+              );
+            }
+            final values = Map<String, Object?>.from(row);
+            if (table == 'bill_documents') {
+              final encoded = values['duplicatePdf'];
+              if (encoded is! String || encoded.length > 8 * 1024 * 1024) {
+                throw const FormatException('Invalid archived PDF.');
+              }
+              final bytes = base64Decode(encoded);
+              BillDocumentCodec.decodePdf(bytes, encoding: values['encoding']);
+              values['encoding'] ??= 'pdf';
+              values['duplicatePdf'] = bytes;
+            }
+            if (table == 'customers') {
+              values['identityKey'] = null;
+              // v1/v2 backups written before v11 may include a consent value
+              // silently defaulted by an older migration. Only v11 timestamps
+              // can prove the owner/customer explicitly opted in.
+              if ((snapshot['schemaVersion'] as int? ?? 0) < 11 ||
+                  values['whatsappOptIn'] != 1 ||
+                  values['whatsappOptInAt'] is! String ||
+                  DateTime.tryParse(values['whatsappOptInAt']! as String) ==
+                      null) {
+                values['whatsappOptIn'] = 0;
+                values['whatsappOptInAt'] = null;
+              }
+            }
+            if (table == 'sales' &&
+                (snapshot['schemaVersion'] as int? ?? 0) < 12 &&
+                values['paymentStatus'] == 'paid' &&
+                (values['paidMinor'] as int? ?? 0) == 0) {
+              values['paidMinor'] = _saleTotal(values);
+            }
+            if (table == 'sales' &&
+                !values.containsKey('initialPaymentMinor')) {
+              final total = _saleTotal(values);
+              values['initialPaymentMinor'] = total;
+              values['expectedPaymentMinor'] = total;
+            }
+            await tx.insert(table, values);
+          }
+        }
+        await repairCustomerLinks(tx);
+        final restoredSequence = await tx.query(
+          'settings',
+          where: 'key = ?',
+          whereArgs: ['bill-sequence'],
+        );
+        final restoredHigh = restoredSequence.isEmpty
+            ? 0
+            : int.tryParse(restoredSequence.single['value']! as String) ?? 0;
+        if (high > restoredHigh) {
+          await tx.insert('settings', {
+            'key': 'bill-sequence',
+            'value': '$high',
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await ensureBillNumbers(tx);
+        if ((snapshot['schemaVersion'] as int? ?? 0) < 12) {
+          await installLaunchSchema(tx);
+        }
+        if ((await tx.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
+          throw const FormatException('Invalid backup relationships.');
+        }
+        await beforeCommit?.call();
+        if (validateOnly) throw const _BusinessValidationRollback();
+      });
+    } on _BusinessValidationRollback {
+      /* Validated without replacing data. */
+    }
   }
 }
 
@@ -595,4 +659,8 @@ Future<void> _createPerformanceIndexes(DatabaseExecutor db) async {
   await db.execute(
     'CREATE INDEX IF NOT EXISTS sales_currency_created ON sales(currency, createdAt DESC, id DESC)',
   );
+}
+
+class _BusinessValidationRollback implements Exception {
+  const _BusinessValidationRollback();
 }

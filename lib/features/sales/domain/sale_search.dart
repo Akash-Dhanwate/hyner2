@@ -32,7 +32,7 @@ class SaleSearch {
       contactMatches(
         sale.draft.customerName,
         sale.draft.customerPhone,
-        sale.id,
+        '${sale.reference} ${sale.id}',
       ) ||
       amountMinor != null && sale.draft.totalMinor == amountMinor;
 }

@@ -138,7 +138,7 @@ void main() {
         await old.close();
 
         final db = await store.databaseFor(uid);
-        expect(await db.getVersion(), 13);
+        expect(await db.getVersion(), 14);
         expect(await db.query('bill_documents'), isEmpty);
         final archiveColumns = await db.rawQuery(
           'PRAGMA table_info(bill_documents)',
@@ -151,10 +151,14 @@ void main() {
         );
         final after = await db.query('sales', orderBy: 'id');
         for (var i = 0; i < before.length; i++) {
-          final expected = {...before[i]}..remove('customerId');
+          final expected = {...before[i]}
+            ..remove('customerId')
+            ..remove('billNumber');
           if (version == 8) expected['customerAddress'] = null;
           expect(
-            {...after[i]}..remove('customerId'),
+            {...after[i]}
+              ..remove('customerId')
+              ..remove('billNumber'),
             expected,
             reason: before[i]['id']! as String,
           );
@@ -304,12 +308,23 @@ void main() {
     }
     await old.close();
     final db = await store.databaseFor(uid);
-    expect(await db.getVersion(), 13);
+    expect(await db.getVersion(), 14);
     expect(await db.query('customers'), isEmpty);
     final rows = await db.query('sales', orderBy: 'id');
     expect(rows.every((row) => row['customerId'] == null), isTrue);
     for (final row in rows) {
-      expect(row, invalid.singleWhere((item) => item['id'] == row['id']));
+      expect(
+        {...row}..remove('billNumber'),
+        {
+          ...invalid.singleWhere((item) => item['id'] == row['id']),
+          'billState': 'active',
+          'creditMinor': 0,
+          'voidReason': null,
+          'voidedAt': null,
+          'replacesSaleId': null,
+        }..remove('billNumber'),
+      );
+      expect(row['billNumber'], isA<int>());
     }
   });
 
@@ -347,8 +362,19 @@ void main() {
         (item) => item['id'] == row['id'],
       );
       expect(
-        {...row}..remove('customerId'),
-        {...original}..remove('customerId'),
+        {...row}
+          ..remove('customerId')
+          ..remove('billNumber'),
+        {
+            ...original,
+            'billState': 'active',
+            'creditMinor': 0,
+            'voidReason': null,
+            'voidedAt': null,
+            'replacesSaleId': null,
+          }
+          ..remove('customerId')
+          ..remove('billNumber'),
       );
     }
     final current = await store.exportFor(uid);

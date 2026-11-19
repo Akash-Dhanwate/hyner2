@@ -253,10 +253,7 @@ void main() {
         await search(tester, query);
         await reveal(tester, find.byKey(ValueKey('customer-${customer.id}')));
         expect(find.text(customer.name), findsOneWidget);
-        expect(
-          find.textContaining('Customer ID: ${customer.reference}'),
-          findsOneWidget,
-        );
+        expect(find.text(customer.phone), findsOneWidget);
         expect(find.textContaining('Reference:'), findsNothing);
         expect(find.text(otherCustomer.name), findsNothing);
         expect(find.byType(ListTile), findsOneWidget);

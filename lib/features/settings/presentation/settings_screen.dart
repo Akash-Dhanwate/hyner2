@@ -21,7 +21,10 @@ import '../../../core/images/image_editor_screen.dart';
 import 'bill_template_selector.dart';
 import '../../../core/widgets/account_scope_guard.dart';
 import 'theme_preset_picker.dart';
-import '../../sales/data/bill_pdf_filename.dart';
+import '../../auth/data/device_access_repository.dart';
+import '../../pricing/application/pricing_workspace_provider.dart';
+import '../../pricing/data/device_workspace.dart';
+import '../../../main.dart' show HynerLauncher;
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -152,12 +155,17 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 24),
         const Divider(),
         const SizedBox(height: 28),
+        ListTile(
+          leading: const Icon(Icons.privacy_tip_outlined),
+          title: const Text('Privacy and account deletion'),
+          onTap: () => openWorkspacePage(GoRouter.of(context), '/privacy'),
+        ),
         const Eyebrow('About'),
         const SizedBox(height: 16),
         Text('Hyner', style: theme.textTheme.titleLarge),
         const SizedBox(height: 6),
         Text(
-          'Version 0.8.4 · Business workspace and QuickPrice',
+          'Version 0.9.0 · Business workspace and QuickPrice',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -174,79 +182,16 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _BillFilenamePreference extends ConsumerStatefulWidget {
+class _BillFilenamePreference extends StatelessWidget {
   const _BillFilenamePreference({super.key});
   @override
-  ConsumerState<_BillFilenamePreference> createState() =>
-      _BillFilenamePreferenceState();
-}
-
-class _BillFilenamePreferenceState
-    extends ConsumerState<_BillFilenamePreference> {
-  final _preferences = BillPdfFilenamePreferences();
-  bool _includeMobile = true;
-  bool _loading = true;
-  bool _saving = false;
-  String? _uid;
-
-  @override
-  void initState() {
-    super.initState();
-    _uid = ref.read(inventoryUidProvider);
-    if (_uid != null) unawaited(_load(_uid!));
-  }
-
-  Future<void> _load(String uid) async {
-    try {
-      final value = await _preferences.includeMobile(uid);
-      if (mounted && _uid == uid) {
-        setState(() {
-          _includeMobile = value;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted && _uid == uid) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _save(bool value) async {
-    final uid = _uid;
-    if (_saving || uid == null) return;
-    final previous = _includeMobile;
-    setState(() {
-      _includeMobile = value;
-      _saving = true;
-    });
-    try {
-      await _preferences.setIncludeMobile(uid, value);
-    } catch (_) {
-      if (mounted) {
-        setState(() => _includeMobile = previous);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Filename preference could not be saved.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => SwitchListTile(
+  Widget build(BuildContext context) => const ListTile(
     contentPadding: EdgeInsets.zero,
-    title: const Text('Include customer mobile in bill filenames'),
-    subtitle: const Text('Shared PDFs may show this number in the filename.'),
-    value: _includeMobile,
-    onChanged: _uid == null || _loading || _saving ? null : _save,
-    secondary: _loading || _saving
-        ? const SizedBox.square(
-            dimension: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(Icons.badge_outlined),
+    leading: Icon(Icons.receipt_outlined),
+    title: Text('Customer name and bill number'),
+    subtitle: Text(
+      'PDF names use Customer Name - Bill 1.pdf. Bill numbers increase automatically and are never reused.',
+    ),
   );
 }
 
@@ -298,10 +243,23 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
     if (uid == null) return;
     setState(() => _busy = true);
     try {
-      await BackupService.exportAndShare(uid);
+      final workspace = await ref.read(
+        pricingWorkspaceProvider(uid == deviceOwnerUid ? null : uid).future,
+      );
+      if (!mounted || ref.read(inventoryUidProvider) != uid) return;
+      final values = workspace.values;
+      if (values is! DeviceWorkspaceValues) {
+        throw StateError('Complete backups require local storage.');
+      }
+      final saved = await _maintenance(
+        () => BackupService.exportComplete(uid, values.db),
+      );
+      if (!saved) return;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup is ready to save or share.')),
+          const SnackBar(
+            content: Text('Complete business and calculator backup saved.'),
+          ),
         );
       }
     } catch (_) {
@@ -320,7 +278,7 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       const Text(
-        'Export products, stock history, customers, sales, purchases, returns, expenses and settings as a portable backup file.',
+        'Save business records, calculators, rates, estimate drafts, settings and profile images. Backups contain readable customer information; keep the file private.',
       ),
       const SizedBox(height: 12),
       FilledButton.icon(
@@ -331,7 +289,7 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.file_download_outlined),
-        label: Text(_busy ? 'Preparing backup…' : 'Export business backup'),
+        label: Text(_busy ? 'Preparing backup…' : 'Save complete backup'),
       ),
       const SizedBox(height: 8),
       OutlinedButton.icon(
@@ -341,6 +299,34 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
       ),
     ],
   );
+
+  Future<T> _maintenance<T>(Future<T> Function() work) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final progress = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Expanded(child: Text('Preparing your data. Keep Hyner open.')),
+            ],
+          ),
+        ),
+      ),
+    );
+    unawaited(navigator.push(progress));
+    try {
+      return await work();
+    } finally {
+      if (navigator.mounted && progress.isActive) {
+        navigator.removeRoute(progress);
+      }
+    }
+  }
 
   Future<void> _restore() async {
     if (_busy) return;
@@ -365,21 +351,36 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true ||
+        !mounted ||
+        ref.read(inventoryUidProvider) != uid) {
+      return;
+    }
     setState(() => _busy = true);
     try {
-      final restored = await BackupService.pickAndRestore(
-        uid,
-        isWorkspaceCurrent: () => ref.read(inventoryUidProvider) == uid,
+      final workspace = await ref.read(
+        pricingWorkspaceProvider(uid == deviceOwnerUid ? null : uid).future,
+      );
+      if (!mounted || ref.read(inventoryUidProvider) != uid) return;
+      final values = workspace.values;
+      if (values is! DeviceWorkspaceValues) {
+        throw StateError('Complete restore requires local storage.');
+      }
+      final restored = await _maintenance(
+        () => BackupService.pickAndRestore(
+          uid,
+          pricing: values.db,
+          isWorkspaceCurrent: () =>
+              mounted && ref.read(inventoryUidProvider) == uid,
+        ),
       );
       if (mounted && restored) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Backup restored. Reopen Hyner to refresh all screens.',
-            ),
+            content: Text('Backup restored. Refreshing your workspace.'),
           ),
         );
+        HynerLauncher.restart(context);
       }
     } on FormatException catch (error) {
       if (mounted) {

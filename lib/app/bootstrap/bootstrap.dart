@@ -16,6 +16,8 @@ import '../../features/sales/data/local_sales_repository.dart';
 import '../../features/sales/data/local_bill_document_repository.dart';
 import '../../features/settings/data/local_payment_settings_repository.dart';
 import '../../core/storage/local_business_database.dart';
+import '../../core/storage/full_backup_service.dart';
+import '../../features/auth/data/account_deletion_service.dart';
 import '../config/app_config.dart';
 import '../theme/appearance_repository.dart';
 import '../theme/theme_preset.dart';
@@ -42,6 +44,8 @@ Future<AuthRepository> _accountServices(AppConfig config) async {
 }
 
 Future<AppDependencies> bootstrap() async {
+  await AccountDeletionService.finishLocalDeletion();
+  await FullBackupService.recoverOnStartup();
   final config = AppConfig.fromEnvironment();
   // Starts in the background. Opening device data never waits for Firebase.
   final remote = _accountServices(config);

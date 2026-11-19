@@ -329,7 +329,7 @@ void main() {
     final snapshot = jsonDecode(
       jsonEncode(await store.exportFor(uid)),
     ) as Map<String, dynamic>;
-    expect(snapshot['schemaVersion'], 11);
+    expect(snapshot['schemaVersion'], 12);
     final tables = snapshot['tables'] as Map;
     expect(
       (tables['bill_documents'] as List).single['duplicatePdf'],
@@ -343,7 +343,12 @@ void main() {
     await documents.saveDuplicate(uid, 'later_bill', pdf('later duplicate'));
     await store.restoreFor(uid, snapshot);
     await store.close();
-    expect((await store.exportFor(uid))['tables'], snapshot['tables']);
+    final restored = await store.exportFor(uid);
+    final expected = jsonDecode(jsonEncode(snapshot['tables'])) as Map;
+    for (final row in expected['settings'] as List) {
+      if (row['key'] == 'bill-sequence') row['value'] = '2';
+    }
+    expect(restored['tables'], expected);
     expect(await documents.duplicate(uid, 'bill'), orderedEquals(bytes));
     expect(await documents.duplicate(uid, 'later_bill'), isNull);
     expect(

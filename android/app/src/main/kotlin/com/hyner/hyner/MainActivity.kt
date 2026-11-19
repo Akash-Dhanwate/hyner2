@@ -53,6 +53,26 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         createNotificationChannel()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hyner/external")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "open") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val uri = Uri.parse(call.argument<String>("url").orEmpty())
+                val safe = (uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) ||
+                    (uri.scheme == "mailto" && uri.schemeSpecificPart.contains("@"))
+                if (!safe) {
+                    result.error("invalid-url", "A public HTTPS link or email address is required.", null)
+                    return@setMethodCallHandler
+                }
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    result.success(null)
+                } catch (_: ActivityNotFoundException) {
+                    result.error("unavailable", "No application can open this link.", null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hyner/bill_pdf")
             .setMethodCallHandler { call, result ->
                 if (call.method !in listOf("shareWhatsApp", "savePdf", "copyPdf")) {

@@ -33,10 +33,13 @@ class ReportSaleRecord {
     required this.totalMinor,
     required this.paidMinor,
     required this.remainingMinor,
+    this.billNumber,
   });
 
   final DateTime date;
   final String reference;
+  final int? billNumber;
+  String get displayReference => billNumber?.toString() ?? reference;
   final String customer;
   final BigInt totalMinor;
   final BigInt paidMinor;
@@ -98,8 +101,18 @@ class BusinessReport {
     this.otherExpenseCount = 0,
     this.otherExpenseMinor,
     this.expenseRecords = const [],
+    this.collectedMinor = 0,
+    this.refundedMinor = 0,
+    this.supplierPaidMinor = 0,
+    this.supplierRefundMinor = 0,
+    this.customerReturnMinor = 0,
   });
 
+  final int collectedMinor,
+      refundedMinor,
+      supplierPaidMinor,
+      supplierRefundMinor,
+      customerReturnMinor;
   final String currency;
   final DateTime start;
   final DateTime end;

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:crypto/crypto.dart';
 
 Future<String> storeProfilePhoto(String uid, Uint8List bytes) async {
   if (uid.isEmpty ||
@@ -15,10 +16,7 @@ Future<String> storeProfilePhoto(String uid, Uint8List bytes) async {
     '${(await getApplicationSupportDirectory()).path}/profile-images',
   );
   await directory.create(recursive: true);
-  final encodedId = base64Url.encode(utf8.encode(uid)).replaceAll('=', '');
-  final safeId = encodedId.length > 120
-      ? encodedId.substring(0, 120)
-      : encodedId;
+  final safeId = sha256.convert(utf8.encode(uid)).toString();
   final file = File(
     '${directory.path}/$safeId-${DateTime.now().microsecondsSinceEpoch}.png',
   );

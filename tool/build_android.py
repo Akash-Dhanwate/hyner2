@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--format', choices=['split', 'universal', 'bundle', 'analysis'], default='split')
     parser.add_argument('--no-pub', action='store_true')
+    parser.add_argument('--production', action='store_true', help='Require secured upload signing and configured public privacy/deletion services.')
     parser.add_argument('--reference-apk', type=Path)
     parser.add_argument('--label', default='plan-a', help='Artifact filename label (letters, digits and hyphens).')
     args = parser.parse_args()
@@ -31,14 +32,35 @@ def main():
     if len(oauth) != 1:
         raise SystemExit('The Android registration needs its existing Google web OAuth client.')
     project = registration['project_info']
-    values = {'HYNER_ENV': 'development', 'FIREBASE_API_KEY': client['api_key'][0]['current_key'],
+    values = {'HYNER_ENV': 'production' if args.production else 'development', 'FIREBASE_API_KEY': client['api_key'][0]['current_key'],
               'FIREBASE_APP_ID': client['client_info']['mobilesdk_app_id'], 'FIREBASE_MESSAGING_SENDER_ID': project['project_number'],
               'FIREBASE_PROJECT_ID': project['project_id'], 'GOOGLE_SERVER_CLIENT_ID': oauth[0]}
+    public_settings = ['HYNER_DEVELOPER_NAME', 'HYNER_SUPPORT_EMAIL', 'HYNER_PRIVACY_URL',
+                       'HYNER_DELETION_URL', 'HYNER_ACCOUNT_DELETION_ENDPOINT']
+    for setting in public_settings:
+        value = os.environ.get(setting, '').strip()
+        if args.production and not value:
+            raise SystemExit(f'Production build requires {setting}')
+        if value:
+            values[setting] = value
+    if args.production:
+        if args.format != 'bundle':
+            raise SystemExit('Use --format bundle for the production Play artifact.')
+        for setting in ['HYNER_PRIVACY_URL', 'HYNER_DELETION_URL', 'HYNER_ACCOUNT_DELETION_ENDPOINT']:
+            from urllib.parse import urlparse
+            url = urlparse(values[setting])
+            if url.scheme != 'https' or not url.netloc or url.username or url.password:
+                raise SystemExit(f'{setting} must be a public HTTPS URL without credentials')
+        for setting in ['HYNER_KEYSTORE_PATH', 'HYNER_STORE_PASSWORD', 'HYNER_KEY_ALIAS', 'HYNER_KEY_PASSWORD']:
+            if not os.environ.get(setting):
+                raise SystemExit(f'Production signing requires {setting}')
     config = root / 'build/config/firebase.android.json'
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(json.dumps(values))
     flutter = shutil.which('flutter') or '/Users/akash/develop/flutter/bin/flutter'
     environment = os.environ.copy()
+    # Do not inherit a production-signing mode for ordinary test APKs.
+    environment['HYNER_PRODUCTION'] = 'true' if args.production else 'false'
     java = Path('/Applications/Android Studio.app/Contents/jbr/Contents/Home')
     if java.exists(): environment.setdefault('JAVA_HOME', str(java))
     environment.setdefault('ANDROID_HOME', str(Path.home() / 'Library/Android/sdk'))

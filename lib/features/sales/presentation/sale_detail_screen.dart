@@ -31,6 +31,7 @@ import '../data/bill_pdf_filename.dart';
 import 'sales_controller.dart';
 import 'bill_contact_dialog.dart';
 import 'bill_delete_dialog.dart';
+import 'financial_panel.dart';
 
 class SaleDetailScreen extends ConsumerWidget {
   const SaleDetailScreen({super.key, required this.id});
@@ -86,6 +87,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
   bool _saving = false;
   String? _paymentOperationId;
   int? _paymentAmount;
+  FinancialPaymentDraft? _pendingFinancialPayment;
   bool _savingFollowUp = false;
   int _followUpDays = 5;
   AppFailure? _failure;
@@ -172,6 +174,10 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     final uid = ref.read(inventoryUidProvider);
     final amount = _paymentAmount ?? _parsedAmount();
     if (uid == null || amount == null) return;
+    if (ref.read(financialRepositoryProvider) != null) {
+      await _recordDatedPayment(uid, amount);
+      return;
+    }
     setState(() {
       _saving = true;
       _failure = null;
@@ -229,6 +235,65 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
     } catch (error) {
       if (mounted && ref.read(inventoryUidProvider) == uid) {
         setState(() => _failure = AppFailure.from(error));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _recordDatedPayment(String uid, int amount) async {
+    setState(() {
+      _saving = true;
+      _failure = null;
+    });
+    try {
+      final draft =
+          _pendingFinancialPayment ??
+          await showFinancialPaymentDialog(
+            context,
+            currency: sale.draft.currency,
+            maximum: sale.remainingMinor,
+            initialAmount: amount,
+          );
+      if (draft == null || !mounted || ref.read(inventoryUidProvider) != uid) {
+        return;
+      }
+      _pendingFinancialPayment = draft;
+      _paymentOperationId ??= ref.read(salesRepositoryProvider).newSaleId();
+      _paymentAmount = draft.amount;
+      await ref
+          .read(financialRepositoryProvider)!
+          .recordPayment(
+            uid,
+            'sale',
+            sale.id,
+            draft.amount,
+            operationId: _paymentOperationId!,
+            date: draft.date,
+            method: draft.method,
+            note: draft.note,
+          );
+      if (!mounted || ref.read(inventoryUidProvider) != uid) return;
+      _pendingFinancialPayment = null;
+      _paymentOperationId = null;
+      _paymentAmount = null;
+      ref.invalidate(saleProvider(sale.id));
+      ref.invalidate(remainingPaymentsProvider);
+      ref.invalidate(recentSalesProvider);
+      ref.invalidate(customerSalesProvider);
+      ref.invalidate(businessReportProvider);
+      ref.invalidate(scheduledFollowUpsProvider);
+      unawaited(ref.read(salesProvider.notifier).refresh());
+    } catch (e) {
+      if (mounted && ref.read(inventoryUidProvider) == uid) {
+        final failure = AppFailure.from(e);
+        if (failure.kind != FailureKind.network &&
+            failure.kind != FailureKind.unknown) {
+          _pendingFinancialPayment = null;
+          _paymentOperationId = null;
+          _paymentAmount = null;
+        }
+        setState(() => _failure = failure);
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -504,7 +569,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
       type: MaterialType.transparency,
       child: PageContent(
         children: [
-          const Eyebrow('Saved sale'),
+          Eyebrow(sale.isVoid ? 'Void sale' : 'Saved sale'),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -512,7 +577,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SelectableText(
-                'Bill reference · ${sale.id}',
+                'Bill no. · ${sale.reference}',
                 style: theme.textTheme.bodyMedium,
               ),
               Chip(
@@ -570,17 +635,18 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               'Customer name and mobile can be corrected only within seven days of bill creation. The reference and amounts cannot be edited.',
               title: 'Contact edit window',
             ),
-          TextButton.icon(
-            key: const Key('delete-bill'),
-            style: TextButton.styleFrom(
-              foregroundColor: theme.colorScheme.error,
+          if (ref.watch(financialRepositoryProvider) == null)
+            TextButton.icon(
+              key: const Key('delete-bill'),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+              ),
+              onPressed: _saving || _savingFollowUp || _documentBusy
+                  ? null
+                  : _deleteBill,
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete bill'),
             ),
-            onPressed: _saving || _savingFollowUp || _documentBusy
-                ? null
-                : _deleteBill,
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Delete bill'),
-          ),
           if (sale.draft.customerId != null)
             TextButton.icon(
               onPressed: () => context.push<void>(
@@ -590,7 +656,8 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               label: const Text('All customer bills'),
             ),
           const SizedBox(height: 18),
-          if (sale.payments.isNotEmpty) ...[
+          if (ref.watch(financialRepositoryProvider) == null &&
+              sale.payments.isNotEmpty) ...[
             const SizedBox(height: 24),
             DisclosureSection(
               title: 'Payment history',
@@ -623,7 +690,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
             const SizedBox(height: 8),
             Text('Fully paid · ${saleDate(sale.paidAt!)}'),
           ],
-          if (remaining > 0) ...[
+          if (remaining > 0 && !sale.isVoid) ...[
             const SizedBox(height: 24),
             Text('Next payment', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -678,7 +745,7 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               ),
             ),
           ],
-          if (remaining > 0) ...[
+          if (remaining > 0 && !sale.isVoid) ...[
             if (sale.draft.customerId != null &&
                 sale.draft.customerPhone?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 22),
@@ -747,6 +814,15 @@ class _SaleDetailState extends ConsumerState<_SaleDetail> {
               ),
             ],
           ],
+          if (ref.watch(financialRepositoryProvider) != null)
+            FinancialPanel(
+              key: ValueKey(
+                '${ref.watch(inventoryUidProvider)}/${sale.id}/${sale.paidMinor}/${sale.creditMinor}/${sale.billState}',
+              ),
+              id: sale.id,
+              currency: sale.draft.currency,
+              sale: sale,
+            ),
           const SizedBox(height: 24),
           Text('Bill copies', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),

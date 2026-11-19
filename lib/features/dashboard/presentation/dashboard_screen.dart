@@ -418,7 +418,10 @@ class _RecentBillRow extends StatelessWidget {
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 4),
-                    Text(status, style: theme.textTheme.bodySmall),
+                    Text(
+                      'Bill ${sale.reference} · ${sale.isVoid ? 'Void' : status}',
+                      style: theme.textTheme.bodySmall,
+                    ),
                   ],
                 ),
               ),

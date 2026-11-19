@@ -203,7 +203,7 @@ class _ReportContentState extends State<_ReportContent> {
           '${report.salesCount} bills · ${report.soldUnits} units',
         ),
         _Metric(
-          'Payment received',
+          'Received against these bills',
           formatBigMoney(report.paidRevenueMinor, report.currency),
           'Recorded payments on bills in this period',
         ),
@@ -213,6 +213,31 @@ class _ReportContentState extends State<_ReportContent> {
           '${report.unpaidSalesCount} open bills',
         ),
         const SizedBox(height: 12),
+        _Metric(
+          'Customer collections',
+          formatMoney(report.collectedMinor, report.currency),
+          'By payment date, including older bills',
+        ),
+        _Metric(
+          'Customer outflows and corrections',
+          formatMoney(report.refundedMinor, report.currency),
+          'Refunds and negative payment corrections by entry date',
+        ),
+        _Metric(
+          'Supplier payments',
+          formatMoney(report.supplierPaidMinor, report.currency),
+          'By payment date',
+        ),
+        _Metric(
+          'Supplier refunds and corrections',
+          formatMoney(report.supplierRefundMinor, report.currency),
+          'By entry date',
+        ),
+        _Metric(
+          'Customer return credits',
+          formatMoney(report.customerReturnMinor, report.currency),
+          'By return date; sales totals above reflect current credits',
+        ),
         ActivityBarChart(report: report),
         const SizedBox(height: 14),
         PaymentDonutChart(report: report),
@@ -231,7 +256,7 @@ class _ReportContentState extends State<_ReportContent> {
                 children: [
                   Text(record.customer, style: theme.textTheme.titleSmall),
                   Text(
-                    '${record.reference} · ${record.date.toLocal().toString().substring(0, 10)}',
+                    'Bill ${record.displayReference} · ${record.date.toLocal().toString().substring(0, 10)}',
                     style: theme.textTheme.bodySmall,
                   ),
                   FinancialAmount(

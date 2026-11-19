@@ -100,6 +100,7 @@ class SaleDraft {
     this.customerPhone,
     this.customerAddress,
     this.initialPaymentMinor,
+    this.replacesSaleId,
   }) : lines = List.unmodifiable(lines);
 
   final String currency;
@@ -109,6 +110,7 @@ class SaleDraft {
   final String? customerPhone;
   final String? customerAddress;
   final int? initialPaymentMinor;
+  final String? replacesSaleId;
   int get totalMinor => lines.fold(0, (sum, line) => sum + line.totalMinor);
   int get taxMinor =>
       lines.fold(0, (sum, line) => sum + (line.pricing?.taxMinor ?? 0));
@@ -125,6 +127,7 @@ class SaleDraft {
     customerPhone: customerPhone,
     customerAddress: customerAddress,
     initialPaymentMinor: initialPaymentMinor,
+    replacesSaleId: replacesSaleId,
   );
 
   void validate() {
@@ -176,6 +179,7 @@ class SaleDraft {
 
   bool matches(SaleDraft other) =>
       currency == other.currency &&
+      replacesSaleId == other.replacesSaleId &&
       customerId == other.customerId &&
       customerName == other.customerName &&
       customerPhone == other.customerPhone &&
@@ -241,9 +245,22 @@ class Sale {
     this.expectedPaymentMinor = 0,
     this.payments = const [],
     this.followupAt,
+    this.billNumber,
+    this.billState = 'active',
+    this.creditMinor = 0,
+    this.voidReason,
+    this.replacesSaleId,
   });
 
   final String id;
+  final int? billNumber;
+  String get reference => billNumber?.toString() ?? id;
+  final String billState;
+  final int creditMinor;
+  final String? voidReason, replacesSaleId;
+  bool get isVoid => billState == 'void';
+  int get netTotalMinor => draft.totalMinor - creditMinor;
+  int get refundDueMinor => (paidMinor - netTotalMinor).clamp(0, maxMoneyMinor);
   final SaleDraft draft;
   final DateTime createdAt;
   final PaymentStatus paymentStatus;
@@ -255,11 +272,12 @@ class Sale {
   DateTime get contactEditDeadline =>
       createdAt.toUtc().add(const Duration(days: 7));
   bool canEditContactAt(DateTime now) =>
+      !isVoid &&
       !now.toUtc().isBefore(createdAt.toUtc()) &&
       now.toUtc().isBefore(contactEditDeadline);
 
   int get remainingMinor {
-    final balance = draft.totalMinor - paidMinor;
+    final balance = netTotalMinor - paidMinor;
     if (balance < 0) return 0;
     if (balance > maxMoneyMinor) return maxMoneyMinor;
     return balance;

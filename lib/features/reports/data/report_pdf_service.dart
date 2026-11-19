@@ -209,7 +209,7 @@ class ReportPdfService {
                 for (final sale in report.salesRecords)
                   [
                     _date(sale.date),
-                    _shortReference(sale.reference),
+                    _shortReference(sale.displayReference),
                     sale.customer,
                     formatBigMoney(sale.totalMinor, report.currency),
                     formatBigMoney(sale.paidMinor, report.currency),
@@ -302,7 +302,29 @@ class ReportPdfService {
         formatBigMoney(report.operatingExpensesMinor, report.currency),
       ),
       ('Sales revenue', formatBigMoney(report.revenueMinor, report.currency)),
-      ('Received', formatBigMoney(report.paidRevenueMinor, report.currency)),
+      (
+        'Received against these bills',
+        formatBigMoney(report.paidRevenueMinor, report.currency),
+      ),
+      (
+        'Customer collections by payment date',
+        formatBigMoney(BigInt.from(report.collectedMinor), report.currency),
+      ),
+      (
+        'Customer refunds and negative corrections',
+        formatBigMoney(BigInt.from(report.refundedMinor), report.currency),
+      ),
+      (
+        'Supplier payments by payment date',
+        formatBigMoney(BigInt.from(report.supplierPaidMinor), report.currency),
+      ),
+      (
+        'Supplier refunds and negative corrections',
+        formatBigMoney(
+          BigInt.from(report.supplierRefundMinor),
+          report.currency,
+        ),
+      ),
       (
         'Balance due',
         formatBigMoney(report.unpaidRevenueMinor, report.currency),

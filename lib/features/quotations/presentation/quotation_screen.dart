@@ -56,6 +56,7 @@ class QuickPriceQuotationScreen extends ConsumerWidget {
             key: ValueKey((profile.uid, estimateId)),
             uid: profile.uid,
             estimateId: estimateId,
+            onSaved: () => EstimateRepository(workspace).clear(),
             load: () async {
               final estimate = await EstimateRepository(workspace).load();
               if (estimate.id != estimateId ||
@@ -77,9 +78,11 @@ class _EstimateQuotationLoader extends StatefulWidget {
     super.key,
     required this.uid,
     required this.estimateId,
+    required this.onSaved,
     required this.load,
   });
   final String uid, estimateId;
+  final Future<void> Function() onSaved;
   final Future<List<SaleLine>> Function() load;
   @override
   State<_EstimateQuotationLoader> createState() =>
@@ -93,7 +96,11 @@ class _EstimateQuotationLoaderState extends State<_EstimateQuotationLoader> {
     future: _future,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
-        return QuotationEditor(uid: widget.uid, lines: snapshot.data!);
+        return QuotationEditor(
+          uid: widget.uid,
+          lines: snapshot.data!,
+          onSaved: widget.onSaved,
+        );
       }
       return Scaffold(
         appBar: AppBar(title: const Text('Quotation')),
@@ -120,9 +127,15 @@ class _EstimateQuotationLoaderState extends State<_EstimateQuotationLoader> {
 }
 
 class QuotationEditor extends ConsumerStatefulWidget {
-  const QuotationEditor({super.key, required this.uid, required this.lines});
+  const QuotationEditor({
+    super.key,
+    required this.uid,
+    required this.lines,
+    this.onSaved,
+  });
   final String uid;
   final List<SaleLine> lines;
+  final Future<void> Function()? onSaved;
   @override
   ConsumerState<QuotationEditor> createState() => _QuotationEditorState();
 }
@@ -190,6 +203,7 @@ class _QuotationEditorState extends ConsumerState<QuotationEditor> {
         ),
       );
       await ref.read(quotationRepositoryProvider).save(widget.uid, quote);
+      await widget.onSaved?.call();
       if (!_current) return;
       ref.invalidate(quotationsProvider);
       setState(() => _saved = quote);

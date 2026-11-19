@@ -46,7 +46,10 @@ class BillSummary extends StatelessWidget {
                   : 'Payment pending'}',
               style: theme.textTheme.bodySmall,
             ),
-            Text('Ref: ${sale.id}', style: theme.textTheme.bodySmall),
+            Text(
+              '${sale.isVoid ? 'Void bill' : 'Bill no.'}: ${sale.reference}',
+              style: theme.textTheme.bodySmall,
+            ),
             const SizedBox(height: 8),
             FinancialAmount(
               formatMoney(sale.draft.totalMinor, sale.draft.currency),

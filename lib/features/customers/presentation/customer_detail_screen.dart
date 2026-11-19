@@ -192,13 +192,19 @@ class _CustomerHistorySummary extends StatelessWidget {
     final totals = <String, int>{};
     final paid = <String, int>{};
     final due = <String, int>{};
+    final refunds = <String, int>{};
     for (final sale in sales) {
       units += sale.draft.units;
       final currency = sale.draft.currency;
       totals.update(
         currency,
-        (value) => value + sale.draft.totalMinor,
-        ifAbsent: () => sale.draft.totalMinor,
+        (value) => value + sale.netTotalMinor,
+        ifAbsent: () => sale.netTotalMinor,
+      );
+      refunds.update(
+        currency,
+        (value) => value + sale.refundDueMinor,
+        ifAbsent: () => sale.refundDueMinor,
       );
       paid.update(
         currency,
@@ -232,6 +238,8 @@ class _CustomerHistorySummary extends StatelessWidget {
               'Due: ${formatMoney(due[currency]!, currency)}',
               compact: true,
             ),
+            if (refunds[currency]! > 0)
+              Text('Refund due: ${formatMoney(refunds[currency]!, currency)}'),
           ],
           if (sales.isEmpty) ...[
             const SizedBox(height: 12),
@@ -258,9 +266,19 @@ class _CustomerBill extends StatelessWidget {
           formatMoney(sale.draft.totalMinor, sale.draft.currency),
           compact: true,
         ),
-        Text('${saleDate(sale.createdAt)} · ${sale.draft.units} units'),
         Text(
-          sale.paymentStatus == PaymentStatus.paid
+          'Bill ${sale.reference} · ${saleDate(sale.createdAt)} · ${sale.draft.units} units${sale.isVoid ? ' · Void' : ''}',
+        ),
+        if (sale.creditMinor > 0)
+          Text('Credit: ${formatMoney(sale.creditMinor, sale.draft.currency)}'),
+        if (sale.refundDueMinor > 0)
+          Text(
+            'Refund due: ${formatMoney(sale.refundDueMinor, sale.draft.currency)}',
+          ),
+        Text(
+          sale.isVoid
+              ? 'Void bill'
+              : sale.paymentStatus == PaymentStatus.paid
               ? 'Paid'
               : '${sale.paymentStatus == PaymentStatus.partial ? 'Part paid' : 'Pending'} · '
                     '${formatMoney(sale.remainingMinor, sale.draft.currency)} due',

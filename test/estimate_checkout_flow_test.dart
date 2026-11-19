@@ -165,17 +165,16 @@ void main() {
       expect(saved.draft.lines.every((line) => !line.stockTracked), isTrue);
       expect(inventory.products(testIdentity.uid), isEmpty);
       expect(sales.writes, 1);
-      expect(
-        (await EstimateRepository(workspace).load()).convertedSaleId,
-        estimate.operationId,
-      );
-      // Re-entering the handoff opens the saved bill, without another invoice.
+      final cleared = await EstimateRepository(workspace).load();
+      expect(cleared.lines, isEmpty);
+      expect(cleared.convertedSaleId, isNull);
+      // The completed bill is now independent from the cleared estimate.
       container.read(routerProvider).go('/sales/quickprice/${estimate.id}');
       await tester.pumpAndSettle();
       expect(sales.writes, 1);
       expect(
         container.read(routerProvider).routeInformationProvider.value.uri.path,
-        '/sales/${estimate.operationId}',
+        '/sales/quickprice/${estimate.id}',
       );
       expect(tester.takeException(), isNull);
     },

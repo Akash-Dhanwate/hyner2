@@ -27,6 +27,7 @@ class SaleEditorScreen extends ConsumerWidget {
     this.embedded = false,
     this.customerId,
     this.checkout,
+    this.replacesSaleId,
   });
   final bool embedded;
   final String? customerId;
@@ -34,6 +35,7 @@ class SaleEditorScreen extends ConsumerWidget {
   /// The entry wrapper resolves a previously saved operation before opening
   /// the editor, so returning to an estimate opens its existing bill.
   final SaleCheckoutSeed? checkout;
+  final String? replacesSaleId;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(inventoryUidProvider);
@@ -57,6 +59,7 @@ class SaleEditorScreen extends ConsumerWidget {
             embedded: embedded,
             initialCustomerId: customerId,
             checkout: checkout,
+            replacesSaleId: replacesSaleId,
           );
   }
 }
@@ -68,11 +71,13 @@ class _SaleForm extends ConsumerStatefulWidget {
     required this.embedded,
     this.initialCustomerId,
     this.checkout,
+    this.replacesSaleId,
   });
   final String uid;
   final bool embedded;
   final String? initialCustomerId;
   final SaleCheckoutSeed? checkout;
+  final String? replacesSaleId;
   @override
   ConsumerState<_SaleForm> createState() => _SaleFormState();
 }
@@ -198,6 +203,7 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
           ? parseMoney(_advanceAmount.text)
           : total,
       lines: lines,
+      replacesSaleId: widget.replacesSaleId,
     )..validate();
   }
 
@@ -598,6 +604,10 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
               ),
         body: PageContent(
           children: [
+            if (widget.replacesSaleId != null)
+              const InlineNotice(
+                'Replacement bill: the void original remains in history. Payments and refunds on the original stay separate.',
+              ),
             if (_checkout == null) ...[
               if (widget.embedded)
                 Row(

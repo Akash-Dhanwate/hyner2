@@ -169,8 +169,10 @@ void main() {
     expect((await inventory.get('owner', solid.sku)).quantity, 8);
     expect((await inventory.get('owner', grooved.sku)).quantity, 4);
     expect(
-      (await inventory.movements('owner', grooved.sku)).movements
-          .where((movement) => movement.type == 'sale'),
+      (await inventory.movements(
+        'owner',
+        grooved.sku,
+      )).movements.where((movement) => movement.type == 'sale'),
       hasLength(1),
     );
   });

@@ -25,11 +25,24 @@ void main() {
 class HynerLauncher extends StatefulWidget {
   const HynerLauncher({super.key, this.dependencies});
   final Future<AppDependencies>? dependencies;
+  static VoidCallback? restartAction(BuildContext context) =>
+      context.findAncestorStateOfType<_HynerLauncherState>()?._restart;
+  static void restart(BuildContext context) =>
+      context.findAncestorStateOfType<_HynerLauncherState>()?._restart();
   @override
   State<HynerLauncher> createState() => _HynerLauncherState();
 }
 
 class _HynerLauncherState extends State<HynerLauncher> {
+  int generation = 0;
+  void _restart() {
+    if (!mounted) return;
+    setState(() {
+      generation++;
+      dependencies = bootstrap();
+    });
+  }
+
   late Future<AppDependencies> dependencies =
       widget.dependencies ?? bootstrap();
   @override
@@ -39,6 +52,7 @@ class _HynerLauncherState extends State<HynerLauncher> {
       if (snapshot.hasData) {
         PerformanceRecorder.mark(PerformanceMilestone.bootstrapReady);
         return ProviderScope(
+          key: ValueKey(generation),
           overrides: [dependenciesProvider.overrideWithValue(snapshot.data!)],
           child: const business.HynerApp(),
         );

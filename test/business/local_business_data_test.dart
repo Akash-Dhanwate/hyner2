@@ -412,7 +412,7 @@ void main() {
         await oldDb.setVersion(version);
         await oldDb.close();
         final upgraded = await store.databaseFor('alice');
-        expect(await upgraded.getVersion(), 13);
+        expect(await upgraded.getVersion(), 14);
         expect((await inventory.get('alice', 'A')).quantity, 9);
         expect((await sales.get('alice', 'old')).draft.firstPaymentMinor, 100);
         expect(await upgraded.query('movements'), hasLength(2));

@@ -52,6 +52,23 @@ class LocalReportsRepository implements ReportsRepository {
         orderBy: 'createdAt DESC',
       );
       for (final sale in sales) {
+        if (sale['billState'] == 'void') continue;
+        final returned = <String, Map<String, int>>{};
+        for (final record in await tx.query(
+          'sale_returns',
+          where: 'saleId = ?',
+          whereArgs: [sale['id']],
+        )) {
+          for (final item in jsonDecode(record['items']! as String) as List) {
+            final totals = returned.putIfAbsent(
+              item['sku'] as String,
+              () => {'quantity': 0, 'totalMinor': 0, 'costMinor': 0},
+            );
+            for (final key in totals.keys) {
+              totals[key] = totals[key]! + (item[key] as int);
+            }
+          }
+        }
         final decoded = jsonDecode(sale['lines']! as String);
         if (decoded is! List) continue;
         final date = DateTime.parse(sale['createdAt']! as String).toLocal();
@@ -83,12 +100,16 @@ class LocalReportsRepository implements ReportsRepository {
                           raw['inventoryCostKnown'] != true))) {
             throw const FormatException('Invalid custom bill line');
           }
-          final lineRevenue = pricing != null
-              ? BigInt.from(pricing.totalMinor)
-              : BigInt.from(raw['unitPriceMinor'] as int) *
-                    BigInt.from(quantity);
+          final credit = returned[raw['sku']];
+          final returnedUnits = credit?['quantity'] ?? 0;
+          final lineRevenue =
+              (pricing != null
+                  ? BigInt.from(pricing.totalMinor)
+                  : BigInt.from(raw['unitPriceMinor'] as int) *
+                        BigInt.from(quantity)) -
+              BigInt.from(credit?['totalMinor'] ?? 0);
           saleRevenue += lineRevenue;
-          saleUnits += quantity;
+          saleUnits += quantity - returnedUnits;
           final hasCost =
               raw['unitCostMinor'] is int &&
               (raw['unitCostMinor'] as int) >= 0 &&
@@ -100,21 +121,25 @@ class LocalReportsRepository implements ReportsRepository {
           } else {
             saleCost +=
                 BigInt.from(raw['unitCostMinor'] as int) *
-                BigInt.from(quantity);
+                    BigInt.from(quantity) -
+                BigInt.from(credit?['costMinor'] ?? 0);
           }
           final sku = raw['inventorySku'] as String? ?? raw['sku'] as String;
           final stat = productStats.putIfAbsent(
             sku,
             () => _MutableProductStat(sku: sku, name: raw['name'] as String),
           );
-          stat.units += quantity;
+          stat.units += quantity - returnedUnits;
           stat.revenueMinor += lineRevenue;
         }
         soldUnits += saleUnits;
         revenue += saleRevenue;
 
         final paidValue = sale['paidMinor'] as int? ?? 0;
-        final paidForSale = sale['paymentStatus'] == 'paid' && paidValue == 0
+        final paidForSale =
+            sale['paymentStatus'] == 'paid' &&
+                paidValue == 0 &&
+                sale['billNumber'] == null
             ? saleRevenue
             : _bounded(BigInt.from(paidValue), BigInt.zero, saleRevenue);
         final remainingForSale = saleRevenue - paidForSale;
@@ -130,6 +155,7 @@ class LocalReportsRepository implements ReportsRepository {
           ReportSaleRecord(
             date: date,
             reference: sale['id']! as String,
+            billNumber: sale['billNumber'] as int?,
             customer:
                 (sale['customerName'] as String?)?.trim().isNotEmpty == true
                 ? sale['customerName'] as String
@@ -305,7 +331,42 @@ class LocalReportsRepository implements ReportsRepository {
           final byRevenue = b.revenueMinor.compareTo(a.revenueMinor);
           return byRevenue == 0 ? b.units.compareTo(a.units) : byRevenue;
         });
+      final cashRows = await tx.rawQuery(
+        '''SELECT f.documentType,f.kind,f.amountMinor FROM financial_entries f
+        LEFT JOIN sales s ON f.documentType='sale' AND s.id=f.documentId
+        LEFT JOIN purchases p ON f.documentType='purchase' AND p.id=f.documentId
+        WHERE f.kind!='opening_balance' AND COALESCE(s.currency,p.currency)=? AND f.effectiveAt>=? AND f.effectiveAt<?''',
+        [currency, from, until],
+      );
+      var collected = 0, refunded = 0, supplierPaid = 0, supplierRefund = 0;
+      for (final row in cashRows) {
+        final amount = row['amountMinor']! as int;
+        if (row['documentType'] == 'sale') {
+          if (amount > 0) {
+            collected += amount;
+          } else {
+            refunded -= amount;
+          }
+        } else {
+          if (amount > 0) {
+            supplierPaid += amount;
+          } else {
+            supplierRefund -= amount;
+          }
+        }
+      }
+      final customerReturns =
+          (await tx.rawQuery(
+                'SELECT COALESCE(SUM(r.totalMinor),0) AS n FROM sale_returns r JOIN sales s ON s.id=r.saleId WHERE s.currency=? AND r.createdAt>=? AND r.createdAt<?',
+                [currency, from, until],
+              )).single['n']!
+              as int;
       return BusinessReport(
+        collectedMinor: collected,
+        refundedMinor: refunded,
+        supplierPaidMinor: supplierPaid,
+        supplierRefundMinor: supplierRefund,
+        customerReturnMinor: customerReturns,
         currency: currency,
         start: start,
         end: endExclusive,

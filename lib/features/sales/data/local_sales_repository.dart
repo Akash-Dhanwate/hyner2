@@ -3,10 +3,12 @@ import 'dart:math';
 
 import '../../../core/errors/app_failure.dart';
 import '../../../core/storage/local_business_database.dart';
+import '../../../core/storage/launch_migration.dart';
 import '../../customers/data/customer_rows.dart';
 import '../../customers/domain/customer.dart';
 import '../../inventory/data/inventory_codec.dart';
 import '../../inventory/domain/product.dart';
+import 'local_financial_repository.dart';
 import '../domain/sale.dart';
 import '../domain/sale_search.dart';
 import '../domain/sale_price_snapshot.dart';
@@ -19,6 +21,7 @@ class LocalSalesRepository implements SalesRepository {
     : _clock = clock ?? DateTime.now;
   final DateTime Function() _clock;
   final LocalBusinessDatabase _store;
+  LocalBusinessDatabase get store => _store;
 
   @override
   String newSaleId() => _localId();
@@ -98,7 +101,7 @@ class LocalSalesRepository implements SalesRepository {
         if (query.contactMatches(
           row['customerName'] as String?,
           row['customerPhone'] as String?,
-          row['id']! as String,
+          '${row['billNumber'] ?? ''} ${row['id']}',
         )) {
           matches.add(_saleFromRow(row));
         } else if (query.amountMinor != null) {
@@ -378,6 +381,26 @@ class LocalSalesRepository implements SalesRepository {
         );
       }
 
+      if (draft.replacesSaleId != null) {
+        final originals = await tx.query(
+          'sales',
+          where: 'id = ?',
+          whereArgs: [draft.replacesSaleId],
+        );
+        final replacements = await tx.query(
+          'sales',
+          where: 'replacesSaleId = ?',
+          whereArgs: [draft.replacesSaleId],
+        );
+        if (originals.isEmpty ||
+            originals.single['billState'] != 'void' ||
+            originals.single['currency'] != draft.currency ||
+            replacements.isNotEmpty) {
+          throw inventoryInvalid(
+            'A replacement requires a void original in the same currency without another replacement.',
+          );
+        }
+      }
       draft.validateForNewBill();
       final customer = await saveCustomerRow(
         tx,
@@ -461,8 +484,11 @@ class LocalSalesRepository implements SalesRepository {
         );
       }
 
+      final billNumber = await nextBillNumber(tx);
       await tx.insert('sales', {
         'id': id,
+        'billNumber': billNumber,
+        'replacesSaleId': draft.replacesSaleId,
         'currency': draft.currency,
         'lines': jsonEncode(savedLines),
         'customerId': customer.id,
@@ -505,6 +531,11 @@ class LocalSalesRepository implements SalesRepository {
         throw inventoryInvalid('This bill could not be found. Refresh sales.');
       }
       final prior = _saleFromRow(rows.single);
+      if (prior.isVoid || prior.creditMinor > 0) {
+        throw inventoryInvalid(
+          'This bill has corrections. Keep its audit history and use Void bill.',
+        );
+      }
       if (prior.paidMinor != expectedPaidMinor) {
         throw inventoryInvalid(
           'Payments on this bill changed. Reopen the bill before deleting it.',
@@ -576,6 +607,11 @@ class LocalSalesRepository implements SalesRepository {
       });
       await tx.delete('bill_documents', where: 'saleId = ?', whereArgs: [id]);
       // Payments and follow-up scheduling are stored on the sale itself.
+      await tx.delete(
+        'financial_entries',
+        where: 'documentType = ? AND documentId = ?',
+        whereArgs: ['sale', id],
+      );
       await tx.delete('sales', where: 'id = ?', whereArgs: [id]);
     });
   }
@@ -600,70 +636,15 @@ class LocalSalesRepository implements SalesRepository {
     int amountMinor, {
     String? operationId,
   }) async {
-    _checkOwner(uid);
-    if (operationId != null && !InventoryCodec.validOperationId(operationId)) {
-      throw inventoryInvalid('Invalid payment reference.');
-    }
-    final db = await _store.databaseFor(uid);
-    await db.transaction((tx) async {
-      final rows = await tx.query(
-        'sales',
-        where: 'id = ?',
-        whereArgs: [id],
-        limit: 1,
-      );
-      if (rows.isEmpty) {
-        throw inventoryInvalid('This sale could not be found. Refresh sales.');
-      }
-      final sale = _saleFromRow(rows.single);
-      if (operationId != null) {
-        final prior = sale.payments
-            .where((p) => p.operationId == operationId)
-            .firstOrNull;
-        if (prior != null) {
-          if (prior.amountMinor != amountMinor) {
-            throw inventoryInvalid(
-              'This payment reference was used for a different amount.',
-            );
-          }
-          return;
-        }
-      }
-      if (sale.remainingMinor == 0) return;
-      if (amountMinor < 1 || amountMinor > sale.remainingMinor) {
-        throw inventoryInvalid(
-          'Enter a payment amount from 1 to ${moneyDecimal(sale.remainingMinor)}.',
-        );
-      }
-      final now = DateTime.now().toUtc();
-      final paid = sale.paidMinor + amountMinor;
-      final remaining = sale.draft.totalMinor - paid;
-      final payments = [
-        ...sale.payments,
-        PaymentEntry(
-          amountMinor: amountMinor,
-          createdAt: now,
-          operationId: operationId,
-        ),
-      ];
-      await tx.update(
-        'sales',
-        {
-          'paymentStatus': remaining == 0
-              ? PaymentStatus.paid.name
-              : PaymentStatus.partial.name,
-          'expectedPaymentMinor': remaining,
-          'paidMinor': paid,
-          'payments': jsonEncode([
-            for (final payment in payments) payment.toMap(),
-          ]),
-          'paidAt': remaining == 0 ? now.toIso8601String() : null,
-          'followupAt': remaining == 0 ? null : rows.single['followupAt'],
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+    await LocalFinancialRepository(_store, clock: _clock).recordPayment(
+      uid,
+      'sale',
+      id,
+      amountMinor,
+      operationId: operationId ?? newSaleId(),
+      date: _clock(),
+      matchDate: false,
+    );
   }
 }
 
@@ -729,6 +710,7 @@ Sale _saleFromRow(Map<String, Object?> row) {
     customerPhone: customerPhone,
     customerAddress: row['customerAddress'] as String?,
     initialPaymentMinor: row['initialPaymentMinor'] as int?,
+    replacesSaleId: row['replacesSaleId'] as String?,
   )..validate();
   final rawPaymentHistory = jsonDecode(row['payments'] as String? ?? '[]');
   if (rawPaymentHistory is! List ||
@@ -749,14 +731,29 @@ Sale _saleFromRow(Map<String, Object?> row) {
       ),
   ];
   final totalMinor = draft.totalMinor;
+  final creditMinor = row['creditMinor'] as int? ?? 0;
+  final billNumber = row['billNumber'] as int?;
+  if (creditMinor < 0 ||
+      creditMinor > totalMinor ||
+      billNumber != null && billNumber < 1 ||
+      !const ['active', 'void'].contains(row['billState'] ?? 'active')) {
+    throw inventoryInvalid('This bill has invalid correction metadata.');
+  }
   var paidMinor = row['paidMinor'] as int? ?? 0;
-  if (row['paymentStatus'] == PaymentStatus.paid.name && paidMinor == 0) {
+  if (row['paymentStatus'] == PaymentStatus.paid.name &&
+      paidMinor == 0 &&
+      payments.isEmpty &&
+      row['billNumber'] == null) {
     paidMinor = totalMinor;
   }
   if (paidMinor < 0 || paidMinor > totalMinor) {
     throw inventoryInvalid('This bill’s payment amount is invalid.');
   }
-  final remainingMinor = totalMinor - paidMinor;
+  final remainingMinor =
+      (totalMinor - (row['creditMinor'] as int? ?? 0) - paidMinor).clamp(
+        0,
+        maxMoneyMinor,
+      );
   final status = remainingMinor == 0
       ? PaymentStatus.paid
       : paidMinor > 0
@@ -771,6 +768,11 @@ Sale _saleFromRow(Map<String, Object?> row) {
   final paidAtValue = row['paidAt'] as String?;
   return Sale(
     id: row['id']! as String,
+    billNumber: row['billNumber'] as int?,
+    billState: row['billState'] as String? ?? 'active',
+    creditMinor: row['creditMinor'] as int? ?? 0,
+    voidReason: row['voidReason'] as String?,
+    replacesSaleId: row['replacesSaleId'] as String?,
     draft: draft,
     createdAt: DateTime.parse(row['createdAt']! as String),
     paymentStatus: status,
@@ -833,3 +835,6 @@ String _localId() {
   final random = Random.secure();
   return List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join();
 }
+
+/// Shared decoder for transactional financial corrections.
+Sale decodeLocalSale(Map<String, Object?> row) => _saleFromRow(row);

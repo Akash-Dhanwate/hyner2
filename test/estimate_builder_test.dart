@@ -660,7 +660,7 @@ void main() {
     },
   );
 
-  test('memory workspace reopens one active estimate and retains converted records until a new estimate', () async {
+  test('memory workspace clears an estimate independently from saved documents', () async {
     final workspace = createPreviewWorkspace();
     var repository = EstimateRepository(workspace);
     final fresh = await repository.load();
@@ -681,10 +681,9 @@ void main() {
     repository = EstimateRepository(reopened);
     expect((await repository.load()).convertedSaleId, 'saved-bill');
     await expectLater(repository.save(estimate), throwsStateError);
-    final next = QuickPriceEstimate.empty(workspace.businessId);
-    await repository.save(next);
-    expect((await repository.load()).id, next.id);
+    await repository.clear();
     expect((await repository.load()).lines, isEmpty);
+    expect((await repository.load()).convertedSaleId, isNull);
   });
 
   test(

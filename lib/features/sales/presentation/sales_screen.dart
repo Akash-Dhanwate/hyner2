@@ -111,7 +111,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             onSubmitted: (_) => _submit(),
             decoration: InputDecoration(
               labelText: 'Find a bill',
-              hintText: 'Customer, mobile or bill amount',
+              hintText: 'Customer, mobile, bill number or amount',
               counterText: '',
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: IconButton(

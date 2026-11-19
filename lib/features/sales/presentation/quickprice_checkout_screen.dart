@@ -125,6 +125,10 @@ class _CheckoutLoaderState extends ConsumerState<_CheckoutLoader> {
               return;
             }
             await repository.save(latest.markConverted(saleId));
+            // The bill is now persisted independently; discard only the
+            // in-progress QuickPrice estimate so it cannot be reused by the
+            // next customer.
+            await repository.clear();
           },
         ),
       );

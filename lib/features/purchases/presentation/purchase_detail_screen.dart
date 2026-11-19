@@ -11,6 +11,7 @@ import '../../../core/widgets/page_content.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../sales/domain/sale.dart';
+import '../../sales/presentation/financial_panel.dart';
 import '../domain/purchase.dart';
 import 'purchases_controller.dart';
 
@@ -219,6 +220,15 @@ class PurchaseDetailScreen extends ConsumerWidget {
                       label: const Text('I paid the supplier · Mark paid'),
                     ),
                   ],
+                  if (ref.watch(financialRepositoryProvider) != null)
+                    FinancialPanel(
+                      key: ValueKey(
+                        '${ref.watch(inventoryUidProvider)}/${purchase.id}/${purchase.returnedTotalMinor}/${purchase.paymentStatus}',
+                      ),
+                      id: purchase.id,
+                      currency: purchase.draft.currency,
+                      purchase: true,
+                    ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
                     onPressed:

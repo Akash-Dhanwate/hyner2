@@ -1,10 +1,15 @@
 # Hyner — business workspace and universal QuickPrice
 
-Android build **0.8.4+16** combines the business features copied from
-`hyner1-full` with the current universal QuickPrice calculator. The original
-source folder remains untouched.
+Android release candidate **0.9.0+17** adds permanent bill numbers and
+`Customer Name - Bill 1.pdf` exports, complete business/calculator backups with
+restore recovery, dated customer and supplier payments, reversals, customer
+returns/refunds, and auditable void/replacement bills. Reports distinguish
+payment-date collections from bill-date sales. Privacy/account-deletion code
+and guarded production signing are included; public deployment, owner details,
+production keys and physical-device acceptance remain required.
+See [0.9.0 implementation, verification and release setup](docs/launch-0.9.0.md).
 
-The current release adds calculator rename and safe removal actions, plus bill and quotation readability refinements on top of
+The earlier 0.8.x releases added calculator rename and safe removal actions, plus bill and quotation readability refinements on top of
 four saved colour themes, clearer financial typography,
 consistent edit/document actions and responsive register amounts. It retains
 confirmed bill deletion with stock restoration,
@@ -24,9 +29,9 @@ See the [UI/UX audit, implementation report and before/after captures](UX_REDESI
 
 ## Use the Android app
 
-Install the matching `hyner-0.8.4-calculator-actions-arm64-v8a.apk` (most current phones),
-`hyner-0.8.4-calculator-actions-armeabi-v7a.apk` (32-bit Android), or
-`hyner-0.8.4-calculator-actions-x86_64.apk` from `build/app/outputs/flutter-apk/`.
+Install the matching `hyner-0.9.0-launch-ready-arm64-v8a.apk` (most current phones),
+`hyner-0.9.0-launch-ready-armeabi-v7a.apk` (32-bit Android), or
+`hyner-0.9.0-launch-ready-x86_64.apk` from `build/app/outputs/flutter-apk/`.
 The separately built universal APK is the compatibility fallback. Install over the
 existing Hyner application; do not uninstall or clear app data. The original
 universal APK remains preserved. See [Plan A measurement and rollback guidance](docs/performance/PLAN_A.md).
@@ -88,13 +93,18 @@ Original goes to WhatsApp. A compact Duplicate is compressed and archived locall
 Save duplicate PDF exports it as a normal PDF. Document actions operate on the
 saved bill and never deduct stock again.
 
-Open **Sales → Saved bills → select a bill → Delete bill** to remove an
-incorrect or cancelled sale after confirmation. This removes its recorded
-payments, reminder and local PDF archive, updates reports/customer bill history,
-and restores tracked inventory once (reactivating archived products if needed).
-Delete only when the goods remain in, or have returned to, your stock. Deletion
-does not refund money or remove PDFs already exported/shared. Customer profiles,
-stock history and a deletion audit remain. This action cannot be undone.
+Open a saved bill's **Payments, returns and corrections** section to record dated
+receipts, correct a mistaken entry with a reversal, return selected customer
+items, and record refunds. Return credits reduce the unpaid balance first;
+excess credit becomes a refund due. Choose whether returned goods go back into
+sellable stock. The return history can export a return-credit PDF.
+
+Use **Void bill** for a cancelled or incorrect sale when the goods remain in, or
+have returned to, your stock. It retains the original bill and payments, restores
+only quantities not already returned, and records the reason. Any received money
+remains a refund due until you record its repayment. **Create replacement bill**
+links the next numbered bill to that void original; payment records remain on
+their original bill. Bill numbers start at 1 per workspace and are never reused.
 
 Checkout automatically saves and links a new customer by name and mobile.
 Customers can be searched by name, mobile, readable customer ID or added date.
@@ -110,15 +120,17 @@ prices and amounts retain their decimal values.
 If the older business APK was installed as `com.example.hyner`, its data is in a
 separate Android app. Export a backup there, sign into the same account here,
 and use Settings → Restore business backup. Restore replaces the current
-account register after confirmation. Business backups currently do not include
-QuickPrice rates, active estimate drafts or local profile images.
+account register after confirmation. New `.hyner` complete backups include QuickPrice rates, estimate drafts,
+scoped preferences and required local profile images. Older JSON backups contain
+only their original register data.
 
 ## Included and pending
 
 The copied business features include inventory stock history, supplier purchases
 and returns, multi-product bills, partial/pay-later payment records, exact-amount
 UPI QR, separate paginated Original/Duplicate PDFs, customer history, expenses, reports,
-manual quotation/purchase-order/accounting registers and opted-in WhatsApp
+manual quotation/purchase-order/accounting registers, dated supplier payments
+and return credits, and opted-in WhatsApp
 message drafts. WhatsApp requires the seller to send messages. UPI payments
 are verified by the seller, not automatically processed by Hyner.
 
@@ -152,7 +164,8 @@ flutter build web --release
 
 The Android script reads `android/app/google-services.json` and creates build-only
 Dart configuration for `com.hyner.hyner`. It does not deploy rules or modify
-Firebase services. Business database schema 12 upgrades the copied register
+Firebase services. Business database schema 14 upgrades the copied register
 additively, including customer/bill addresses, indexed customer identity matching,
-historical bill links, compressed local Duplicate archives and additive query indexes.
-Portable backup rows remain format 10. QuickPrice schema 4 preserves earlier rates and snapshots.
+historical bill links, compressed local Duplicate archives, query indexes,
+consent evidence, permanent bill numbers and financial/return audit tables.
+Portable business JSON uses schema 12; complete backups also include the separate pricing store. QuickPrice schema 4 preserves earlier rates and snapshots.
