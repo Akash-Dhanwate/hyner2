@@ -186,10 +186,10 @@ Future<String?> _continueToSales(
   if (!context.mounted || ref.read(inventoryUidProvider) != uid) return null;
   if (quotation) return null;
   try {
-    return (await ref
-            .read(salesRepositoryProvider)
-            .get(uid, estimate.operationId))
-        .id;
+    final saleId =
+        (await ref.read(salesRepositoryProvider).get(uid, estimate.operationId))
+            .id;
+    return saleId;
   } on AppFailure catch (failure) {
     if (failure.reference == 'sales/not-found') return null;
     rethrow;

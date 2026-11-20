@@ -326,6 +326,22 @@ final class QuickPriceEstimate {
     return _change(lines, saleId: saleId);
   }
 
+  /// Retains only the completed operation marker for idempotent bill retries.
+  /// The customer-facing working lines are removed immediately.
+  QuickPriceEstimate clearAfterBill(String saleId) {
+    validateId(saleId);
+    final now = DateTime.now().toUtc();
+    return QuickPriceEstimate._(
+      id: id,
+      businessId: businessId,
+      lines: const [],
+      revision: revision + 1,
+      createdAt: createdAt,
+      updatedAt: now.isBefore(updatedAt) ? updatedAt : now,
+      convertedSaleId: saleId,
+    );
+  }
+
   SaleCheckoutSeed toCheckoutSeed(String uid) {
     _editable();
     if (lines.isEmpty) {
@@ -443,6 +459,12 @@ final class EstimateRepository {
     return json == null
         ? QuickPriceEstimate.empty(workspace.businessId)
         : QuickPriceEstimate.fromJson(json, businessId: workspace.businessId);
+  }
+
+  /// Deletes the temporary estimate so the next customer starts empty.
+  Future<void> clear() async {
+    await _tail;
+    await workspace.values.write('estimate', null);
   }
 
   Future<void> save(QuickPriceEstimate estimate) {

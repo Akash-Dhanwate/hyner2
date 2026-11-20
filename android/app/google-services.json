@@ -80,6 +80,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "746350362575-49rjehu80pp86aheda26pvtahqfo0l64.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hyner.hyner",
+            "certificate_hash": "ce7e4f34bc7e8222c7d0aeaca457ce6168278573"
+          }
+        },
+        {
           "client_id": "746350362575-uggo3lel8c0jv4j511rugf70p66epkrt.apps.googleusercontent.com",
           "client_type": 3
         }

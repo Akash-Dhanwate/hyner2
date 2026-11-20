@@ -56,6 +56,7 @@ class QuickPriceQuotationScreen extends ConsumerWidget {
             key: ValueKey((profile.uid, estimateId)),
             uid: profile.uid,
             estimateId: estimateId,
+            onCompleted: workspace.clearWorkingDraft,
             load: () async {
               final estimate = await EstimateRepository(workspace).load();
               if (estimate.id != estimateId ||
@@ -77,9 +78,11 @@ class _EstimateQuotationLoader extends StatefulWidget {
     super.key,
     required this.uid,
     required this.estimateId,
+    required this.onCompleted,
     required this.load,
   });
   final String uid, estimateId;
+  final Future<void> Function() onCompleted;
   final Future<List<SaleLine>> Function() load;
   @override
   State<_EstimateQuotationLoader> createState() =>
@@ -93,7 +96,11 @@ class _EstimateQuotationLoaderState extends State<_EstimateQuotationLoader> {
     future: _future,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
-        return QuotationEditor(uid: widget.uid, lines: snapshot.data!);
+        return QuotationEditor(
+          uid: widget.uid,
+          lines: snapshot.data!,
+          onCompleted: widget.onCompleted,
+        );
       }
       return Scaffold(
         appBar: AppBar(title: const Text('Quotation')),
@@ -120,9 +127,15 @@ class _EstimateQuotationLoaderState extends State<_EstimateQuotationLoader> {
 }
 
 class QuotationEditor extends ConsumerStatefulWidget {
-  const QuotationEditor({super.key, required this.uid, required this.lines});
+  const QuotationEditor({
+    super.key,
+    required this.uid,
+    required this.lines,
+    required this.onCompleted,
+  });
   final String uid;
   final List<SaleLine> lines;
+  final Future<void> Function() onCompleted;
   @override
   ConsumerState<QuotationEditor> createState() => _QuotationEditorState();
 }
@@ -202,6 +215,11 @@ class _QuotationEditorState extends ConsumerState<QuotationEditor> {
 
   @override
   void dispose() {
+    if (_saved != null) {
+      // Keep the saved quotation preview usable, then clear the temporary
+      // QuickPrice draft when the user leaves this completed document.
+      unawaited(widget.onCompleted());
+    }
     _name.dispose();
     _phone.dispose();
     _address.dispose();

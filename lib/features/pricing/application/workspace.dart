@@ -43,6 +43,15 @@ class QuickPriceWorkspace {
     await onClose?.call();
   }
 
+  /// Removes temporary calculator work-in-progress without touching saved
+  /// rate cards, bills, or quotations.
+  Future<void> clearWorkingDraft() async {
+    await Future.wait<void>([
+      values.write('calculator', null),
+      values.write('estimate', null),
+    ]);
+  }
+
   Future<List<PricingProfileSummary>> profiles() async {
     final result = <PricingProfileSummary>[];
     String cursor = '';

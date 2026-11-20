@@ -62,6 +62,19 @@ class CalculatorSession extends ChangeNotifier {
   String? get baseRateOverrideText => _baseRateOverride;
   bool get hasBaseRateOverride => _baseRateOverride != null;
 
+  /// Returns the editor to a brand-new calculation.
+  void reset() {
+    product = null;
+    entries = {};
+    quantity = '1';
+    result = null;
+    error = null;
+    _useSameUnit = true;
+    _linkedUnit = null;
+    _baseRateOverride = null;
+    notifyListeners();
+  }
+
   SellingRate? get _availableBaseRate {
     final rule = product?.rule;
     if (rule == null) return null;

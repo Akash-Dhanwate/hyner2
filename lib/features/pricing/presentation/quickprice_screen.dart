@@ -78,16 +78,35 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     expiryTimer?.cancel();
     session.removeListener(_changed);
     session.dispose();
+    // This is temporary customer work, not saved business data.
+    unawaited(_clearStoredWorkingDraft());
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _load();
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
-      unawaited(writer.flush());
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_clearWorkingDraft());
     }
+  }
+
+  Future<void> _clearWorkingDraft() async {
+    if (!mounted) return;
+    restoring = true;
+    session.reset();
+    estimate = QuickPriceEstimate.empty(widget.workspace.businessId);
+    editingLineId = null;
+    restoring = false;
+    await _clearStoredWorkingDraft();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _clearStoredWorkingDraft() async {
+    await writer.flush();
+    await estimateRepository.clear();
+    await writer.write('calculator', null);
   }
 
   void _changed() {

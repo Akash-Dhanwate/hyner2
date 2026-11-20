@@ -84,7 +84,8 @@ class _CheckoutLoaderState extends ConsumerState<_CheckoutLoader> {
       final repository = EstimateRepository(widget.workspace);
       final estimate = await repository.load();
       if (!current || ticket != generation) return;
-      if (estimate.id != widget.estimateId || estimate.lines.isEmpty) {
+      if (estimate.id != widget.estimateId ||
+          (estimate.lines.isEmpty && estimate.convertedSaleId == null)) {
         throw StateError(
           'This estimate is no longer the current draft. Open QuickPrice to choose the estimate.',
         );
@@ -124,7 +125,11 @@ class _CheckoutLoaderState extends ConsumerState<_CheckoutLoader> {
                 latest.revision != estimate.revision) {
               return;
             }
-            await repository.save(latest.markConverted(saleId));
+            await repository.save(latest.clearAfterBill(saleId));
+            // The bill now owns its immutable line snapshots. The QuickPrice
+            // estimate is only a temporary customer draft, so the next bill
+            // must start empty even while this screen remains open.
+            await widget.workspace.values.write('calculator', null);
           },
         ),
       );
