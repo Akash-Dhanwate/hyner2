@@ -78,35 +78,16 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     expiryTimer?.cancel();
     session.removeListener(_changed);
     session.dispose();
-    // This is temporary customer work, not saved business data.
-    unawaited(_clearStoredWorkingDraft());
+    // Calculator and estimate state are durable drafts. They are cleared only
+    // after a quotation/bill is completed, never merely because the app is
+    // closed or backgrounded.
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _load();
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      unawaited(_clearWorkingDraft());
-    }
-  }
-
-  Future<void> _clearWorkingDraft() async {
-    if (!mounted) return;
-    restoring = true;
-    session.reset();
-    estimate = QuickPriceEstimate.empty(widget.workspace.businessId);
-    editingLineId = null;
-    restoring = false;
-    await _clearStoredWorkingDraft();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _clearStoredWorkingDraft() async {
-    await writer.flush();
-    await estimateRepository.clear();
-    await writer.write('calculator', null);
+    // DraftWriter already persists every change; reopening the app restores it.
   }
 
   void _changed() {
@@ -448,6 +429,12 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
             tooltip: 'Calculator options',
             onSelected: (action) {
               switch (action) {
+                case 'save-draft':
+                  unawaited(_saveDraft());
+                  break;
+                case 'open-draft':
+                  unawaited(_openEstimate());
+                  break;
                 case 'manage':
                   unawaited(_manage());
                   break;
@@ -463,6 +450,16 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'save-draft',
+                child: Text('Save current work as draft'),
+              ),
+              PopupMenuItem(
+                value: 'open-draft',
+                child: Text(
+                  'Open saved draft (${estimate?.lines.length ?? 0} items)',
+                ),
+              ),
               const PopupMenuItem(
                 value: 'manage',
                 child: Text('Calculators and rates'),
@@ -731,6 +728,16 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
                   ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _saveDraft() async {
+    await writer.flush();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Draft saved. You can safely leave and resume later.'),
       ),
     );
   }

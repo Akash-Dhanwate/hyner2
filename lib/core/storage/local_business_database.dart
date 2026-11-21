@@ -49,7 +49,7 @@ class LocalBusinessDatabase {
     return factory.openDatabase(
       '$directory/hyner_register_$fileKey.db',
       options: OpenDatabaseOptions(
-        version: 13,
+        version: 14,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, version) async {
           await db.execute('''
@@ -146,6 +146,7 @@ class LocalBusinessDatabase {
           await _createPurchaseOrderTable(db);
           await _createAccountingTable(db);
           await _createBillDocuments(db);
+          await _createSaleDraftTable(db);
           await _createPerformanceIndexes(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
@@ -257,6 +258,7 @@ class LocalBusinessDatabase {
             await repairCustomerLinks(db);
           }
           if (oldVersion < 12) await _createPerformanceIndexes(db);
+          if (oldVersion < 14) await _createSaleDraftTable(db);
         },
       ),
     );
@@ -407,6 +409,20 @@ class LocalBusinessDatabase {
       await repairCustomerLinks(tx);
     });
   }
+}
+
+Future<void> _createSaleDraftTable(DatabaseExecutor db) async {
+  await db.execute('''
+    CREATE TABLE sale_drafts (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      draft TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  ''');
+  await db.execute(
+    'CREATE INDEX sale_drafts_updated ON sale_drafts(updatedAt DESC)',
+  );
 }
 
 Future<void> _createBillDocuments(DatabaseExecutor db) => db.execute('''

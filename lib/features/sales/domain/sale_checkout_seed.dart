@@ -9,6 +9,7 @@ final class SaleCheckoutSeed {
     required this.operationId,
     required List<SaleLine> lines,
     this.onSaved,
+    this.initialDraft,
   }) : lines = List.unmodifiable(lines) {
     validate();
   }
@@ -19,6 +20,7 @@ final class SaleCheckoutSeed {
 
   /// Runtime completion hook. Failure cannot undo an already committed sale.
   final Future<void> Function(String saleId)? onSaved;
+  final SaleDraft? initialDraft;
 
   String get currency => lines.first.pricing!.currency;
 

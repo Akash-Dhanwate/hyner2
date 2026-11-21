@@ -22,6 +22,8 @@ import '../../sales/data/bill_pdf_actions.dart';
 import '../../sales/data/bill_pdf_filename.dart';
 import '../../sales/data/bill_pdf_service.dart';
 import '../../sales/domain/sale.dart';
+import '../../sales/domain/sale_checkout_seed.dart';
+import '../../sales/presentation/sale_editor_screen.dart';
 import '../../settings/domain/payment_settings.dart';
 import '../../settings/presentation/payment_settings_controller.dart';
 import '../domain/quotation.dart';
@@ -132,10 +134,12 @@ class QuotationEditor extends ConsumerStatefulWidget {
     required this.uid,
     required this.lines,
     required this.onCompleted,
+    this.existing,
   });
   final String uid;
   final List<SaleLine> lines;
   final Future<void> Function() onCompleted;
+  final Quotation? existing;
   @override
   ConsumerState<QuotationEditor> createState() => _QuotationEditorState();
 }
@@ -145,8 +149,11 @@ class _QuotationEditorState extends ConsumerState<QuotationEditor> {
   final _name = TextEditingController(),
       _phone = TextEditingController(),
       _address = TextEditingController();
-  final _id = 'Q-${DateTime.now().toUtc().microsecondsSinceEpoch}';
-  final _created = DateTime.now().toUtc();
+  late final String _id =
+      widget.existing?.id ??
+      'Q-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+  late final DateTime _created =
+      widget.existing?.createdAt ?? DateTime.now().toUtc();
   Quotation? _pending, _saved;
   bool _busy = false, _leaving = false;
   String? _error;
@@ -155,6 +162,18 @@ class _QuotationEditorState extends ConsumerState<QuotationEditor> {
       _name.text.isNotEmpty ||
       _phone.text.isNotEmpty ||
       _address.text.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    final draft = widget.existing?.draft;
+    if (draft != null) {
+      _name.text = draft.customerName ?? '';
+      _phone.text = draft.customerPhone ?? '';
+      _address.text = draft.customerAddress ?? '';
+    }
+  }
+
   Future<void> _leave() async {
     if (_busy || _leaving) return;
     _leaving = true;
@@ -202,7 +221,11 @@ class _QuotationEditorState extends ConsumerState<QuotationEditor> {
           initialPaymentMinor: 0,
         ),
       );
-      await ref.read(quotationRepositoryProvider).save(widget.uid, quote);
+      if (widget.existing == null) {
+        await ref.read(quotationRepositoryProvider).save(widget.uid, quote);
+      } else {
+        await ref.read(quotationRepositoryProvider).update(widget.uid, quote);
+      }
       if (!_current) return;
       ref.invalidate(quotationsProvider);
       setState(() => _saved = quote);
@@ -571,6 +594,41 @@ class _QuotationDocumentState extends ConsumerState<QuotationDocument> {
                         : () => context.push<void>('/bill-settings'),
                     icon: const Icon(Icons.edit_outlined),
                     label: const Text('PDF appearance'),
+                  ),
+                  TextButton.icon(
+                    key: const Key('quotation-edit'),
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => QuotationEditor(
+                                uid: widget.uid,
+                                lines: widget.quote.draft.lines,
+                                existing: widget.quote,
+                                onCompleted: () async {},
+                              ),
+                            ),
+                          ),
+                    icon: const Icon(Icons.edit_note_outlined),
+                    label: const Text('Edit quotation'),
+                  ),
+                  FilledButton.icon(
+                    key: const Key('quotation-convert-to-bill'),
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => SaleEditorScreen(
+                                checkout: SaleCheckoutSeed(
+                                  uid: widget.uid,
+                                  operationId: 'quote_${widget.quote.id}',
+                                  lines: widget.quote.draft.lines,
+                                ),
+                              ),
+                            ),
+                          ),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('Convert to bill'),
                   ),
                 ],
               ),

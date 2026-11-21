@@ -3,6 +3,7 @@ import '../domain/quotation.dart';
 
 abstract interface class QuotationRepository {
   Future<void> save(String uid, Quotation quotation);
+  Future<void> update(String uid, Quotation quotation);
   Future<List<Map<String, Object?>>> list(
     String uid, {
     String? beforeTime,
@@ -49,6 +50,23 @@ class LocalQuotationRepository implements QuotationRepository {
       }
       await tx.insert('quotations', row);
     });
+  }
+
+  @override
+  Future<void> update(String uid, Quotation quotation) async {
+    _check(uid);
+    final row = quotation.toRow();
+    Quotation.fromRow(row);
+    final db = await store.databaseFor(uid);
+    final changed = await db.update(
+      'quotations',
+      row,
+      where: 'id = ?',
+      whereArgs: [quotation.id],
+    );
+    if (changed != 1) {
+      throw const FormatException('This quotation was not found.');
+    }
   }
 
   @override

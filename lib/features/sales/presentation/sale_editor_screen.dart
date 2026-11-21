@@ -16,6 +16,8 @@ import '../../inventory/domain/pricing_formula.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../domain/sale.dart';
 import '../domain/sale_checkout_seed.dart';
+import '../data/local_sale_draft_repository.dart';
+import '../../../core/storage/business_database_provider.dart';
 import 'sale_product_picker.dart';
 import 'sales_controller.dart';
 import 'bill_summary.dart';
@@ -109,6 +111,19 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
     final customerId = widget.initialCustomerId;
     if (customerId != null) {
       unawaited(_loadInitialCustomer(customerId));
+    }
+    final initial = _checkout?.initialDraft;
+    if (initial != null) {
+      _customerName.text = initial.customerName ?? '';
+      _customerPhone.text = initial.customerPhone ?? '';
+      _customerAddress.text = initial.customerAddress ?? '';
+      if (initial.initialPaymentMinor == 0) {
+        _paymentMode = 2;
+      } else if (initial.initialPaymentMinor != null &&
+          initial.initialPaymentMinor != initial.totalMinor) {
+        _paymentMode = 1;
+        _advanceAmount.text = moneyDecimal(initial.initialPaymentMinor!);
+      }
     }
   }
 
@@ -480,6 +495,83 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
     }
   }
 
+  Future<void> _saveDraft() async {
+    if (_saving || !_hasLines) return;
+    try {
+      final draft = _draft();
+      final id = _id ??= 'D-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+      await LocalSaleDraftRepository(ref.read(businessDatabaseProvider))
+          .save(widget.uid, id, draft);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bill draft saved. You can resume it later.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _failure = AppFailure.from(error));
+    }
+  }
+
+  Future<void> _openDrafts() async {
+    final drafts = await LocalSaleDraftRepository(
+      ref.read(businessDatabaseProvider),
+    ).list(widget.uid);
+    if (!mounted) return;
+    final selected = await showDialog<Map<String, Object?>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Saved bill drafts'),
+        content: SizedBox(
+          width: 420,
+          child: drafts.isEmpty
+              ? const Text('No saved bill drafts yet.')
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final row in drafts)
+                      ListTile(
+                        title: Text(row['title']! as String),
+                        subtitle: Text(row['updatedAt']! as String),
+                        onTap: () => Navigator.pop(context, row),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    try {
+      final id = selected['id']! as String;
+      final draft = await LocalSaleDraftRepository(
+        ref.read(businessDatabaseProvider),
+      ).get(widget.uid, id);
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => SaleEditorScreen(
+            checkout: SaleCheckoutSeed(
+              uid: widget.uid,
+              operationId: 'draft_$id',
+              lines: draft.lines,
+              initialDraft: draft,
+              onSaved: (_) =>
+                  LocalSaleDraftRepository(ref.read(businessDatabaseProvider))
+                      .remove(widget.uid, id),
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(AppFailure.from(error).message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabled = !_saving && !_uncertain;
@@ -584,6 +676,18 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                 title: const Text('Build a bill'),
                 actions: [
                   IconButton(
+                    key: const Key('save-bill-draft'),
+                    tooltip: 'Save bill as draft',
+                    onPressed: _saving ? null : _saveDraft,
+                    icon: const Icon(Icons.bookmark_add_outlined),
+                  ),
+                  IconButton(
+                    key: const Key('open-bill-drafts'),
+                    tooltip: 'Saved bill drafts',
+                    onPressed: _saving ? null : _openDrafts,
+                    icon: const Icon(Icons.bookmarks_outlined),
+                  ),
+                  IconButton(
                     key: const Key('sale-editor-bill-preferences'),
                     tooltip: 'Bill preferences',
                     onPressed: () => context.push<void>('/bill-settings'),
@@ -607,6 +711,18 @@ class _SaleFormState extends ConsumerState<_SaleForm> {
                         'Build a bill',
                         style: Theme.of(context).textTheme.headlineMedium,
                       ),
+                    ),
+                    IconButton(
+                      key: const Key('save-bill-draft-embedded'),
+                      tooltip: 'Save bill as draft',
+                      onPressed: _saving ? null : _saveDraft,
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                    ),
+                    IconButton(
+                      key: const Key('open-bill-drafts-embedded'),
+                      tooltip: 'Saved bill drafts',
+                      onPressed: _saving ? null : _openDrafts,
+                      icon: const Icon(Icons.bookmarks_outlined),
                     ),
                     IconButton(
                       key: const Key('sale-editor-bill-preferences'),
