@@ -7,6 +7,7 @@ export 'theme_preset.dart';
 /// One visual system for the business workspace and every QuickPrice entry.
 abstract final class HynerTheme {
   static const inkGreen = Color(0xFF175C46);
+  static const controlRadius = 10.0;
   static final _cache = <(Brightness, ThemePreset), ThemeData>{};
   static ThemeData build(
     Brightness brightness, {
@@ -70,7 +71,7 @@ abstract final class HynerTheme {
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
     );
-    const radius = BorderRadius.all(Radius.circular(10));
+    const radius = BorderRadius.all(Radius.circular(controlRadius));
     return base.copyWith(
       extensions: [
         HynerStatusColors(
@@ -85,26 +86,31 @@ abstract final class HynerTheme {
         displaySmall: text.displaySmall?.copyWith(
           fontSize: 32,
           fontWeight: FontWeight.w700,
-          letterSpacing: -.8,
+          height: 1.15,
+          letterSpacing: -.6,
         ),
         headlineMedium: text.headlineMedium?.copyWith(
           fontSize: 26,
           fontWeight: FontWeight.w700,
-          letterSpacing: -.5,
+          height: 1.2,
+          letterSpacing: -.4,
         ),
         headlineSmall: text.headlineSmall?.copyWith(
           fontSize: 23,
           fontWeight: FontWeight.w700,
-          letterSpacing: -.3,
+          height: 1.25,
+          letterSpacing: -.2,
         ),
         titleLarge: text.titleLarge?.copyWith(
           fontSize: 20,
           fontWeight: FontWeight.w700,
+          height: 1.25,
           letterSpacing: -.2,
         ),
         titleMedium: text.titleMedium?.copyWith(
           fontSize: 16,
           fontWeight: FontWeight.w600,
+          height: 1.35,
         ),
         bodyLarge: text.bodyLarge?.copyWith(fontSize: 16, height: 1.45),
         bodyMedium: text.bodyMedium?.copyWith(fontSize: 14, height: 1.5),
@@ -161,6 +167,7 @@ abstract final class HynerTheme {
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(48, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: const TextStyle(
             fontFamily: 'Manrope',
             fontSize: 14,
@@ -172,6 +179,7 @@ abstract final class HynerTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           side: BorderSide(color: scheme.outline),
           textStyle: const TextStyle(
             fontFamily: 'Manrope',
@@ -181,10 +189,16 @@ abstract final class HynerTheme {
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
       ),
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+        style: IconButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.all(12),
+        ),
       ),
       chipTheme: base.chipTheme.copyWith(
         shape: const RoundedRectangleBorder(
@@ -197,6 +211,20 @@ abstract final class HynerTheme {
         color: scheme.surfaceContainerLow,
         margin: EdgeInsets.zero,
         shape: const RoundedRectangleBorder(borderRadius: radius),
+      ),
+      dialogTheme: DialogThemeData(
+        elevation: 0,
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(borderRadius: radius),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        showDragHandle: true,
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 72,

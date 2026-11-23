@@ -15,9 +15,9 @@ class PageContent extends StatelessWidget {
           slivers: [
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
-                MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                MediaQuery.sizeOf(context).width < 720 ? 16 : 24,
                 24,
-                MediaQuery.sizeOf(context).width < 360 ? 16 : 24,
+                MediaQuery.sizeOf(context).width < 720 ? 16 : 24,
                 36,
               ),
               sliver: SliverList(delegate: SliverChildListDelegate(children)),
@@ -49,7 +49,12 @@ class SliverPageContent extends StatelessWidget {
       physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          padding: EdgeInsets.fromLTRB(
+            MediaQuery.sizeOf(context).width < 720 ? 16 : 24,
+            24,
+            MediaQuery.sizeOf(context).width < 720 ? 16 : 24,
+            16,
+          ),
           sliver: SliverToBoxAdapter(child: header),
         ),
         ...slivers,
@@ -99,7 +104,7 @@ class InlineNotice extends StatelessWidget {
           color: isError
               ? scheme.errorContainer
               : scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../../inventory/domain/product.dart';
@@ -50,44 +51,58 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final theme = Theme.of(context);
     return PageContent(
       children: [
-        const Eyebrow('Business overview'),
-        const SizedBox(height: 12),
-        Text('Reports', style: theme.textTheme.headlineMedium),
-        const SizedBox(height: 8),
-        const Text('View sales, purchases, balances, and product performance.'),
-        const SizedBox(height: 20),
-        ResponsivePair(
-          first: DropdownButtonFormField<String>(
-            isExpanded: true,
-            initialValue: _currency,
-            decoration: const InputDecoration(labelText: 'Currency'),
-            items: [
-              for (final currency in inventoryCurrencies)
-                DropdownMenuItem(value: currency, child: Text(currency)),
+        HynerSurface(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Eyebrow('Business overview'),
+              const SizedBox(height: 12),
+              Text('Reports', style: theme.textTheme.headlineMedium),
+              const SizedBox(height: 8),
+              const Text(
+                'View sales, purchases, balances, and product performance.',
+              ),
+              const SizedBox(height: 20),
+              ResponsivePair(
+                first: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _currency,
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  items: [
+                    for (final currency in inventoryCurrencies)
+                      DropdownMenuItem(value: currency, child: Text(currency)),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _currency = value ?? _currency),
+                ),
+                second: DropdownButtonFormField<ReportPeriod>(
+                  isExpanded: true,
+                  initialValue: _period,
+                  decoration: const InputDecoration(labelText: 'Period'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: ReportPeriod.today,
+                      child: Text('Today'),
+                    ),
+                    DropdownMenuItem(
+                      value: ReportPeriod.month,
+                      child: Text('This month'),
+                    ),
+                    DropdownMenuItem(
+                      value: ReportPeriod.last30Days,
+                      child: Text('Last 30 days'),
+                    ),
+                    DropdownMenuItem(
+                      value: ReportPeriod.allTime,
+                      child: Text('All time'),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _period = value ?? _period),
+                ),
+              ),
             ],
-            onChanged: (value) =>
-                setState(() => _currency = value ?? _currency),
-          ),
-          second: DropdownButtonFormField<ReportPeriod>(
-            isExpanded: true,
-            initialValue: _period,
-            decoration: const InputDecoration(labelText: 'Period'),
-            items: const [
-              DropdownMenuItem(value: ReportPeriod.today, child: Text('Today')),
-              DropdownMenuItem(
-                value: ReportPeriod.month,
-                child: Text('This month'),
-              ),
-              DropdownMenuItem(
-                value: ReportPeriod.last30Days,
-                child: Text('Last 30 days'),
-              ),
-              DropdownMenuItem(
-                value: ReportPeriod.allTime,
-                child: Text('All time'),
-              ),
-            ],
-            onChanged: (value) => setState(() => _period = value ?? _period),
           ),
         ),
         const SizedBox(height: 24),
@@ -168,49 +183,62 @@ class _ReportContentState extends State<_ReportContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          report.hasIncompleteCosts
-              ? 'Known-cost earnings'
-              : 'Earnings after costs',
-          style: theme.textTheme.titleMedium,
-        ),
-        const SizedBox(height: 6),
-        FinancialAmount(
-          formatBigMoney(report.earningsAfterCostsMinor, report.currency),
-          textKey: const Key('report-earnings'),
-          style: theme.textTheme.headlineMedium,
-          prominent: true,
-        ),
-        Text(
-          'After buying costs and recorded operating expenses',
-          style: theme.textTheme.bodySmall,
-        ),
-        if (report.hasIncompleteCosts)
-          Text(
-            'Incomplete: ${report.uncostedSalesCount} bills have no saved buying costs.',
-            style: theme.textTheme.bodySmall,
+        HynerSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                report.hasIncompleteCosts
+                    ? 'Known-cost earnings'
+                    : 'Earnings after costs',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              FinancialAmount(
+                formatBigMoney(report.earningsAfterCostsMinor, report.currency),
+                textKey: const Key('report-earnings'),
+                style: theme.textTheme.headlineMedium,
+                prominent: true,
+              ),
+              Text(
+                'After buying costs and recorded operating expenses',
+                style: theme.textTheme.bodySmall,
+              ),
+              if (report.hasIncompleteCosts)
+                Text(
+                  'Incomplete: ${report.uncostedSalesCount} bills have no saved buying costs.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              DetailHint(
+                'Gross profit is the selling amount less the buying cost saved on each bill. Earnings subtract recorded operating expenses as well. Stock purchases are not deducted twice. Bills without saved costs are excluded; this is an estimate, not your cash balance.',
+                title: 'Earnings calculation',
+              ),
+            ],
           ),
-        DetailHint(
-          'Gross profit is the selling amount less the buying cost saved on each bill. Earnings subtract recorded operating expenses as well. Stock purchases are not deducted twice. Bills without saved costs are excluded; this is an estimate, not your cash balance.',
-          title: 'Earnings calculation',
         ),
         const SizedBox(height: 12),
         const Eyebrow('Sales'),
         const SizedBox(height: 8),
-        _Metric(
-          'Sales revenue',
-          formatBigMoney(report.revenueMinor, report.currency),
-          '${report.salesCount} bills · ${report.soldUnits} units',
-        ),
-        _Metric(
-          'Payment received',
-          formatBigMoney(report.paidRevenueMinor, report.currency),
-          'Recorded payments on bills in this period',
-        ),
-        _Metric(
-          'Balance due',
-          formatBigMoney(report.unpaidRevenueMinor, report.currency),
-          '${report.unpaidSalesCount} open bills',
+        HynerSurface(
+          child: Column(
+            children: [
+              _Metric(
+                'Sales revenue',
+                formatBigMoney(report.revenueMinor, report.currency),
+                '${report.salesCount} bills · ${report.soldUnits} units',
+              ),
+              _Metric(
+                'Payment received',
+                formatBigMoney(report.paidRevenueMinor, report.currency),
+                'Recorded payments on bills in this period',
+              ),
+              _Metric(
+                'Balance due',
+                formatBigMoney(report.unpaidRevenueMinor, report.currency),
+                '${report.unpaidSalesCount} open bills',
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         ActivityBarChart(report: report),

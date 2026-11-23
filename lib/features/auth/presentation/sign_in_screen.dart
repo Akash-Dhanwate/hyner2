@@ -6,6 +6,7 @@ import '../../../app/bootstrap/app_dependencies.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/widgets/hyner_mark.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import 'session_controller.dart';
 import '../domain/auth_repository.dart';
 
@@ -33,20 +34,39 @@ class SignInScreen extends ConsumerWidget {
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
               children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: HynerMark(size: 64),
-                ),
-                const SizedBox(height: 32),
-                Text('Welcome to Hyner', style: theme.textTheme.headlineMedium),
-                const SizedBox(height: 12),
-                Text(
-                  'Sign in to open your register. Products and bills are saved on this device.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                HynerSurface(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const HynerMark(size: 56),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Welcome to Hyner',
+                        style: theme.textTheme.headlineMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Sign in to open your register. Products and bills are saved on this device.',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 20),
+                if (dependencies.config.issue != null) ...[
+                  InlineNotice(dependencies.config.issue!),
+                  const SizedBox(height: 12),
+                ],
+                if (session.failure != null) ...[
+                  InlineNotice(
+                    session.failure!.displayMessage,
+                    isError: session.failure!.kind != FailureKind.cancelled,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
@@ -101,13 +121,6 @@ class SignInScreen extends ConsumerWidget {
                 ],
                 const _EmailAccessForm(),
                 const SizedBox(height: 20),
-                if (dependencies.config.issue != null)
-                  InlineNotice(dependencies.config.issue!),
-                if (session.failure != null)
-                  InlineNotice(
-                    session.failure!.displayMessage,
-                    isError: session.failure!.kind != FailureKind.cancelled,
-                  ),
                 if (dependencies.startupNotice != null) ...[
                   const SizedBox(height: 12),
                   InlineNotice(dependencies.startupNotice!),
@@ -333,9 +346,7 @@ class AccountSetupScreen extends ConsumerWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
-                    const CircularProgressIndicator(
-                      semanticsLabel: 'Loading account profile',
-                    ),
+                    const HynerLoadingState(label: 'Loading account profile'),
                   ],
                   if (failed) ...[
                     const SizedBox(height: 24),

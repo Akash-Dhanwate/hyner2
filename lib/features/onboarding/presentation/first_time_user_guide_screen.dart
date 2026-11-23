@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/routing/workspace_navigation.dart';
 import '../../../core/storage/business_database_provider.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../data/onboarding_preferences.dart';
 
 final onboardingPreferencesProvider = Provider<OnboardingPreferences>(
@@ -44,7 +45,7 @@ class FirstTimeUserGuidePrompt extends ConsumerWidget {
       .watch(firstTimeGuideProvider(uid))
       .maybeWhen(
         data: (show) => show
-            ? Card(
+            ? HynerSurface(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(

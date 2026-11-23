@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../core/widgets/page_content.dart';
 import '../../../core/widgets/financial_amount.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../inventory/domain/product.dart';
 import '../domain/sale.dart';
 import 'sales_controller.dart';
@@ -33,26 +34,30 @@ class RemainingPaymentsScreen extends ConsumerWidget {
       ),
       data: (sales) => SliverPageContent(
         onRefresh: () => ref.refresh(remainingPaymentsProvider.future),
-        header: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Eyebrow('Sales'),
-            const SizedBox(height: 10),
-            Text('Remaining payments', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: 8),
-            const Text(
-              'Bills with a balance still due. Customer names and phone numbers come from the customer saved on each bill.',
-            ),
-          ],
+        header: HynerSurface(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Eyebrow('Sales'),
+              const SizedBox(height: 10),
+              Text('Remaining payments', style: theme.textTheme.headlineMedium),
+              const SizedBox(height: 8),
+              const Text(
+                'Bills with a balance still due. Customer names and phone numbers come from the customer saved on each bill.',
+              ),
+            ],
+          ),
         ),
         slivers: [
           if (sales.isEmpty)
             const SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               sliver: SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 32),
-                  child: Text('There are no outstanding bill balances.'),
+                child: HynerEmptyState(
+                  title: 'No outstanding payments',
+                  message: 'There are no outstanding bill balances.',
+                  icon: Icons.payments_outlined,
                 ),
               ),
             )

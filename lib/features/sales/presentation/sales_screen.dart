@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import 'bill_summary.dart';
 import 'sales_controller.dart';
@@ -53,103 +54,107 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     final controller = ref.read(salesProvider.notifier);
     return SliverPageContent(
       onRefresh: controller.refresh,
-      header: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Eyebrow('Saved bills'),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Sales history',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                  ],
+      header: HynerSurface(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Eyebrow('Saved bills'),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Sales history',
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  key: const Key('sales-bill-preferences'),
+                  tooltip: 'Bill preferences',
+                  onPressed: () => context.push<void>('/bill-settings'),
+                  icon: const Icon(Icons.tune_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                HynerPrimaryButton(
+                  key: const Key('new-sale'),
+                  onPressed: () => context.push<void>('/sales'),
+                  icon: Icons.add_rounded,
+                  label: 'New bill',
+                  fullWidth: false,
+                ),
+                HynerSecondaryButton(
+                  onPressed: () => context.push<void>('/sales/remaining'),
+                  icon: Icons.payments_outlined,
+                  label: 'Remaining payments',
+                ),
+                IconButton(
+                  tooltip: 'Refresh sales',
+                  onPressed: state.loading ? null : controller.refresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('bill-search'),
+              controller: _search,
+              maxLength: 120,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                labelText: 'Find a bill',
+                hintText: 'Customer, mobile or bill amount',
+                counterText: '',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  tooltip: 'Search bills',
+                  onPressed: _submit,
+                  icon: const Icon(Icons.arrow_forward_rounded),
                 ),
               ),
-              IconButton(
-                key: const Key('sales-bill-preferences'),
-                tooltip: 'Bill preferences',
-                onPressed: () => context.push<void>('/bill-settings'),
-                icon: const Icon(Icons.tune_rounded),
+            ),
+            if (state.search.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  _search.clear();
+                  controller.refresh(search: '');
+                },
+                child: const Text('Show all bills'),
+              ),
+            if (state.loading) const LinearProgressIndicator(),
+            if (state.failure != null) ...[
+              InlineNotice(state.failure!.displayMessage, isError: true),
+              TextButton(
+                onPressed: state.loadingMore
+                    ? null
+                    : state.sales.isEmpty
+                    ? controller.refresh
+                    : controller.loadMore,
+                child: const Text('Try again'),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                key: const Key('new-sale'),
-                onPressed: () => context.push<void>('/sales'),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('New bill'),
+            if (!state.loading && state.failure == null && state.sales.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  state.search.isEmpty ? 'No sales yet' : 'No matching bills',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
-              OutlinedButton.icon(
-                onPressed: () => context.push<void>('/sales/remaining'),
-                icon: const Icon(Icons.payments_outlined),
-                label: const Text('Remaining payments'),
-              ),
-              IconButton(
-                tooltip: 'Refresh sales',
-                onPressed: state.loading ? null : controller.refresh,
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const Key('bill-search'),
-            controller: _search,
-            maxLength: 120,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(
-              labelText: 'Find a bill',
-              hintText: 'Customer, mobile or bill amount',
-              counterText: '',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: IconButton(
-                tooltip: 'Search bills',
-                onPressed: _submit,
-                icon: const Icon(Icons.arrow_forward_rounded),
-              ),
-            ),
-          ),
-          if (state.search.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                _search.clear();
-                controller.refresh(search: '');
-              },
-              child: const Text('Show all bills'),
-            ),
-          if (state.loading) const LinearProgressIndicator(),
-          if (state.failure != null) ...[
-            InlineNotice(state.failure!.displayMessage, isError: true),
-            TextButton(
-              onPressed: state.loadingMore
-                  ? null
-                  : state.sales.isEmpty
-                  ? controller.refresh
-                  : controller.loadMore,
-              child: const Text('Try again'),
-            ),
           ],
-          if (!state.loading && state.failure == null && state.sales.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                state.search.isEmpty ? 'No sales yet' : 'No matching bills',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-        ],
+        ),
       ),
       slivers: [
         SliverPadding(

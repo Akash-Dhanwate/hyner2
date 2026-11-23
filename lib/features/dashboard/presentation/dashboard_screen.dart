@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/routing/workspace_navigation.dart';
+import '../../../app/theme/app_theme.dart';
 import '../../../core/performance/performance_recorder.dart';
 import '../../../core/widgets/financial_amount.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../../inventory/presentation/inventory_controller.dart';
@@ -49,51 +51,100 @@ class DashboardScreen extends ConsumerWidget {
 
     return PageContent(
       children: [
-        Text(
-          'Hello, ${profile?.firstName ?? 'there'}.',
-          style: theme.textTheme.headlineMedium,
-        ),
-        const SizedBox(height: 6),
-        Text('Here is your business today.', style: theme.textTheme.bodyMedium),
-        if (profile?.localOnly == true) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Device workspace · Saved on this phone',
-            style: theme.textTheme.bodySmall,
+        HynerSurface(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked =
+                      constraints.maxWidth < 500 ||
+                      MediaQuery.textScalerOf(context).scale(16) > 22;
+                  final greeting = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello, ${profile?.firstName ?? 'there'}.',
+                        style: theme.textTheme.headlineMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Here is your business today.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ],
+                  );
+                  final badge = HynerStatusBadge(
+                    label: profile?.localOnly == true ? 'On device' : 'Live',
+                    icon: profile?.localOnly == true
+                        ? Icons.smartphone_rounded
+                        : Icons.cloud_done_outlined,
+                  );
+                  return stacked
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            greeting,
+                            const SizedBox(height: 12),
+                            badge,
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: greeting),
+                            badge,
+                          ],
+                        );
+                },
+              ),
+              if (profile?.localOnly == true) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Device workspace · Saved on this phone',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+              if (profile != null) ...[
+                const SizedBox(height: 16),
+                FirstTimeUserGuidePrompt(uid: profile.uid),
+              ],
+            ],
           ),
-        ],
-        if (profile != null) ...[
-          const SizedBox(height: 16),
-          FirstTimeUserGuidePrompt(uid: profile.uid),
-        ],
+        ),
         const SizedBox(height: 24),
         Text('Today at a glance', style: theme.textTheme.titleLarge),
         const SizedBox(height: 16),
-        todayReport.when(
-          loading: () => const LinearProgressIndicator(),
-          error: (_, _) => _RetryMessage(
-            message: 'Today’s sales could not be loaded.',
-            onRetry: () => ref.invalidate(businessReportProvider(todayQuery)),
+        HynerSurface(
+          child: todayReport.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) => _RetryMessage(
+              message: 'Today’s sales could not be loaded.',
+              onRetry: () => ref.invalidate(businessReportProvider(todayQuery)),
+            ),
+            data: (report) =>
+                _TodaySummary(report: report, outstanding: allTimeReport),
           ),
-          data: (report) =>
-              _TodaySummary(report: report, outstanding: allTimeReport),
         ),
         const SizedBox(height: 22),
         LayoutBuilder(
           builder: (context, constraints) {
-            final stacked = constraints.maxWidth < 360;
+            final stacked =
+                constraints.maxWidth < 520 ||
+                MediaQuery.textScalerOf(context).scale(16) > 22;
             final actions = [
-              FilledButton.icon(
+              HynerPrimaryButton(
                 onPressed: () =>
                     openWorkspacePage(GoRouter.of(context), '/sales'),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('New bill'),
+                icon: Icons.add_rounded,
+                label: 'New bill',
               ),
-              OutlinedButton.icon(
+              HynerSecondaryButton(
                 onPressed: () =>
                     openWorkspacePage(GoRouter.of(context), '/quickprice'),
-                icon: const Icon(Icons.calculate_outlined),
-                label: const Text('Quick price'),
+                icon: Icons.calculate_outlined,
+                label: 'Quick price',
               ),
             ];
             return stacked
@@ -117,13 +168,16 @@ class DashboardScreen extends ConsumerWidget {
         const SizedBox(height: 28),
         Text('Needs attention', style: theme.textTheme.titleLarge),
         const SizedBox(height: 8),
-        _AttentionItems(
-          report: allTimeReport,
-          stock: stock,
-          onRetry: () {
-            ref.invalidate(businessReportProvider(allTimeQuery));
-            ref.invalidate(inventoryProvider);
-          },
+        HynerSurface(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: _AttentionItems(
+            report: allTimeReport,
+            stock: stock,
+            onRetry: () {
+              ref.invalidate(businessReportProvider(allTimeQuery));
+              ref.invalidate(inventoryProvider);
+            },
+          ),
         ),
         const SizedBox(height: 24),
         LayoutBuilder(
@@ -153,20 +207,23 @@ class DashboardScreen extends ConsumerWidget {
                   );
           },
         ),
-        recent.when(
-          loading: () => const LinearProgressIndicator(),
-          error: (_, _) => _RetryMessage(
-            message: 'Recent bills could not be loaded.',
-            onRetry: () => ref.invalidate(recentSalesProvider),
+        HynerSurface(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: recent.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) => _RetryMessage(
+              message: 'Recent bills could not be loaded.',
+              onRetry: () => ref.invalidate(recentSalesProvider),
+            ),
+            data: (sales) => sales.isEmpty
+                ? const _EmptyRecentBills()
+                : Column(
+                    children: [
+                      for (final sale in sales.take(3))
+                        _RecentBillRow(sale: sale),
+                    ],
+                  ),
           ),
-          data: (sales) => sales.isEmpty
-              ? const _EmptyRecentBills()
-              : Column(
-                  children: [
-                    for (final sale in sales.take(3))
-                      _RecentBillRow(sale: sale),
-                  ],
-                ),
         ),
         const SizedBox(height: 8),
         TextButton.icon(
@@ -289,9 +346,13 @@ class _FinancialFigure extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: theme.textTheme.bodyMedium),
+        Text(label, style: theme.textTheme.bodySmall),
         const SizedBox(height: 6),
-        FinancialAmount(amount, compact: false),
+        FinancialAmount(
+          amount,
+          compact: false,
+          color: theme.colorScheme.primary,
+        ),
       ],
     );
   }
@@ -371,13 +432,16 @@ class _AttentionRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    leading: Icon(icon, color: Theme.of(context).colorScheme.tertiary),
-    title: Text(title),
-    trailing: const Icon(Icons.chevron_right_rounded),
-    onTap: onTap,
-  );
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: scheme.tertiary),
+      title: Text(title),
+      trailing: Icon(Icons.chevron_right_rounded, color: scheme.primary),
+      onTap: onTap,
+    );
+  }
 }
 
 class _RecentBillRow extends StatelessWidget {
@@ -402,7 +466,7 @@ class _RecentBillRow extends StatelessWidget {
         onTap: () =>
             context.push<void>('/sales/${Uri.encodeComponent(sale.id)}'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(
             children: [
               Expanded(
@@ -418,7 +482,15 @@ class _RecentBillRow extends StatelessWidget {
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 4),
-                    Text(status, style: theme.textTheme.bodySmall),
+                    HynerStatusBadge(
+                      label: status,
+                      icon: sale.paymentStatus == PaymentStatus.paid
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.schedule_rounded,
+                      color: sale.paymentStatus == PaymentStatus.paid
+                          ? theme.extension<HynerStatusColors>()?.success
+                          : theme.extension<HynerStatusColors>()?.warning,
+                    ),
                   ],
                 ),
               ),

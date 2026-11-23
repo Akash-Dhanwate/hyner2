@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_failure.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../customers/domain/customer.dart';
 import '../../customers/presentation/customers_controller.dart';
 import '../../inventory/domain/inventory_repository.dart';
@@ -349,107 +350,108 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         .firstOrNull;
     final dueNow = DateTime.now();
     return SliverPageContent(
-      header: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Eyebrow('Customer communication'),
-          const SizedBox(height: 10),
-          Text('WhatsApp updates', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          const DetailHint(
-            'Prepare product messages and payment follow-ups for customers who have a saved phone number.',
-          ),
-          if (_notice != null) ...[
-            const SizedBox(height: 14),
-            InlineNotice(_notice!, isError: _noticeIsError),
-          ],
-          const SizedBox(height: 24),
-          Text('Product update', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 12),
-          productsAsync.when(
-            loading: () => const LinearProgressIndicator(),
-            error: (_, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const InlineNotice(
-                  'Inventory products could not be loaded.',
-                  isError: true,
-                ),
-                TextButton(
-                  onPressed: () => ref.invalidate(whatsAppProductsProvider),
-                  child: const Text('Try again'),
-                ),
-              ],
+      header: HynerSurface(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Eyebrow('Customer communication'),
+            const SizedBox(height: 10),
+            Text('WhatsApp updates', style: theme.textTheme.headlineMedium),
+            const SizedBox(height: 8),
+            const DetailHint(
+              'Prepare product messages and payment follow-ups for customers who have a saved phone number.',
             ),
-            data: (items) => DropdownButtonFormField<String?>(
-              key: ValueKey((
-                uid,
-                items.any((item) => item.sku == _selectedSku)
+            if (_notice != null) ...[
+              const SizedBox(height: 14),
+              InlineNotice(_notice!, isError: _noticeIsError),
+            ],
+            const SizedBox(height: 24),
+            Text('Product update', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            productsAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const InlineNotice(
+                    'Inventory products could not be loaded.',
+                    isError: true,
+                  ),
+                  TextButton(
+                    onPressed: () => ref.invalidate(whatsAppProductsProvider),
+                    child: const Text('Try again'),
+                  ),
+                ],
+              ),
+              data: (items) => DropdownButtonFormField<String?>(
+                key: ValueKey((
+                  uid,
+                  items.any((item) => item.sku == _selectedSku)
+                      ? _selectedSku
+                      : null,
+                )),
+                initialValue: items.any((item) => item.sku == _selectedSku)
                     ? _selectedSku
                     : null,
-              )),
-              initialValue: items.any((item) => item.sku == _selectedSku)
-                  ? _selectedSku
-                  : null,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Product (optional)',
-              ),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Write a general update'),
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Product (optional)',
                 ),
-                for (final item in items)
-                  DropdownMenuItem<String?>(
-                    value: item.sku,
-                    child: Text(
-                      '${item.name} · ${formatMoney(item.priceMinor, item.currency)}',
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Write a general update'),
                   ),
-              ],
-              onChanged: (value) => setState(() => _selectedSku = value),
+                  for (final item in items)
+                    DropdownMenuItem<String?>(
+                      value: item.sku,
+                      child: Text(
+                        '${item.name} · ${formatMoney(item.priceMinor, item.currency)}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _selectedSku = value),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _message,
-            maxLength: 800,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Message (optional with a product selected)',
-              hintText: 'Add an offer, stock note, or a personal message.',
+            const SizedBox(height: 12),
+            TextField(
+              controller: _message,
+              maxLength: 800,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Message (optional with a product selected)',
+                hintText: 'Add an offer, stock note, or a personal message.',
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _videoLink,
-            keyboardType: TextInputType.url,
-            maxLength: 500,
-            decoration: const InputDecoration(
-              labelText: 'Video or product link (optional)',
+            const SizedBox(height: 8),
+            TextField(
+              controller: _videoLink,
+              keyboardType: TextInputType.url,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Video or product link (optional)',
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text('Recipients', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          const DetailHint(
-            'Customers have updates enabled by default. Use the switches here to change their saved preference; use the checkboxes to choose recipients for this message.',
-            title: 'WhatsApp recipients',
-          ),
-          TextButton.icon(
-            onPressed: _savingPreferences || uid == null || _opening
-                ? null
-                : () => _setUpdates(customers, true),
-            icon: const Icon(Icons.done_all_rounded),
-            label: Text(
-              _savingPreferences
+            const SizedBox(height: 8),
+            Text('Recipients', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            const DetailHint(
+              'Customers have updates enabled by default. Use the switches here to change their saved preference; use the checkboxes to choose recipients for this message.',
+              title: 'WhatsApp recipients',
+            ),
+            HynerSecondaryButton(
+              onPressed: _savingPreferences || uid == null || _opening
+                  ? null
+                  : () => _setUpdates(customers, true),
+              icon: Icons.done_all_rounded,
+              label: _savingPreferences
                   ? 'Saving preferences…'
                   : 'Enable updates for all customers',
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       slivers: [
         SliverPadding(
@@ -542,7 +544,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 12),
-                FilledButton.icon(
+                HynerPrimaryButton(
                   onPressed:
                       _opening ||
                           _savingPreferences ||
@@ -551,10 +553,8 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                           customersAsync.hasError
                       ? null
                       : () => _startCampaign(customers, product),
-                  icon: const Icon(Icons.send_rounded),
-                  label: Text(
-                    'Open WhatsApp for ${selectedIds.length} selected',
-                  ),
+                  icon: Icons.send_rounded,
+                  label: 'Open WhatsApp for ${selectedIds.length} selected',
                 ),
                 if (_queueIndex < _campaignQueue.length) ...[
                   const SizedBox(height: 10),
@@ -562,14 +562,12 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                     'Message ${_queueIndex + 1} of ${_campaignQueue.length} is ready. Send it in WhatsApp, return here, then continue.',
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
+                  HynerSecondaryButton(
                     onPressed: _opening || uid == null
                         ? null
                         : _openNextCampaignMessage,
-                    icon: const Icon(Icons.open_in_new_rounded),
-                    label: Text(
-                      'Open next: ${_campaignQueue[_queueIndex].name}',
-                    ),
+                    icon: Icons.open_in_new_rounded,
+                    label: 'Open next: ${_campaignQueue[_queueIndex].name}',
                   ),
                 ],
                 const SizedBox(height: 28),

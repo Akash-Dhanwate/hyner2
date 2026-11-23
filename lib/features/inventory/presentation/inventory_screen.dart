@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../data/local_inventory_repository.dart';
 import '../domain/inventory_repository.dart';
@@ -104,209 +105,213 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
                   sliver: SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Eyebrow('Product catalogue'),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 20,
-                          runSpacing: 16,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              'Inventory',
-                              style: theme.textTheme.headlineMedium,
-                            ),
-                            FilledButton.icon(
-                              key: const Key('add-product'),
-                              onPressed: _addProduct,
-                              icon: const Icon(Icons.add_rounded),
-                              label: const Text('Add product'),
-                            ),
-                            IconButton(
-                              tooltip: 'Refresh inventory',
-                              onPressed: state.loading ? null : _refresh,
-                              icon: const Icon(Icons.refresh_rounded),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Products and stock, saved on this device.',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          profile?.localOnly == true
-                              ? 'Device workspace · Saved on this phone'
-                              : 'Account workspace · ${profile?.email ?? ''}',
-                          key: const Key('inventory-workspace'),
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        if (legacyImportFailed) ...[
-                          const SizedBox(height: 12),
-                          const InlineNotice(
-                            'Some older products could not be copied from Firebase. Check your connection and published inventory read rules, then refresh. New products are still saved on this device.',
-                            isError: true,
-                          ),
-                        ],
-                        if (state.pricingSyncWarning != null) ...[
-                          const SizedBox(height: 12),
-                          InlineNotice(
-                            state.pricingSyncWarning!,
-                            isError: true,
-                          ),
-                          TextButton(
-                            onPressed: state.loading ? null : _refresh,
-                            child: const Text('Retry calculator sync'),
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 8,
-                          children: [
-                            for (final archived in [false, true])
-                              ChoiceChip(
-                                label: Text(archived ? 'Archived' : 'All'),
-                                selected: state.query.archived == archived,
-                                onSelected: (_) => controller.refresh(
-                                  query: InventoryQuery(
-                                    archived: archived,
-                                    search: _search.text,
-                                    searchBy: state.query.searchBy,
-                                  ),
-                                ),
+                    child: HynerSurface(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Eyebrow('Product catalogue'),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 20,
+                            runSpacing: 16,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'Inventory',
+                                style: theme.textTheme.headlineMedium,
                               ),
+                              HynerPrimaryButton(
+                                key: const Key('add-product'),
+                                onPressed: _addProduct,
+                                icon: Icons.add_rounded,
+                                label: 'Add product',
+                                fullWidth: false,
+                              ),
+                              IconButton(
+                                tooltip: 'Refresh inventory',
+                                onPressed: state.loading ? null : _refresh,
+                                icon: const Icon(Icons.refresh_rounded),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Products and stock, saved on this device.',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            profile?.localOnly == true
+                                ? 'Device workspace · Saved on this phone'
+                                : 'Account workspace · ${profile?.email ?? ''}',
+                            key: const Key('inventory-workspace'),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          if (legacyImportFailed) ...[
+                            const SizedBox(height: 12),
+                            const InlineNotice(
+                              'Some older products could not be copied from Firebase. Check your connection and published inventory read rules, then refresh. New products are still saved on this device.',
+                              isError: true,
+                            ),
                           ],
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<ProductSearch>(
-                          isExpanded: true,
-                          key: ValueKey((uid, state.query.searchBy)),
-                          initialValue: state.query.searchBy,
-                          decoration: const InputDecoration(
-                            labelText: 'Search by',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: ProductSearch.name,
-                              child: Text('Product name'),
+                          if (state.pricingSyncWarning != null) ...[
+                            const SizedBox(height: 12),
+                            InlineNotice(
+                              state.pricingSyncWarning!,
+                              isError: true,
                             ),
-                            DropdownMenuItem(
-                              value: ProductSearch.code,
-                              child: Text('Product code'),
+                            TextButton(
+                              onPressed: state.loading ? null : _refresh,
+                              child: const Text('Retry calculator sync'),
                             ),
                           ],
-                          onChanged: (value) {
-                            if (value != null) {
-                              controller.refresh(
-                                query: InventoryQuery(
-                                  archived: state.query.archived,
-                                  search: _search.text,
-                                  searchBy: value,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          key: const Key('inventory-search'),
-                          controller: _search,
-                          maxLength: 120,
-                          textInputAction: TextInputAction.search,
-                          onSubmitted: (_) => search(),
-                          decoration: InputDecoration(
-                            labelText: 'Starts with…',
-                            counterText: '',
-                            prefixIcon: const Icon(Icons.search_rounded),
-                            suffixIcon: IconButton(
-                              tooltip: 'Search inventory',
-                              onPressed: search,
-                              icon: const Icon(Icons.arrow_forward_rounded),
-                            ),
-                          ),
-                        ),
-                        if ((state.query.search.trim().isNotEmpty ||
-                                state.query.archived) &&
-                            state.products.isNotEmpty)
-                          TextButton(
-                            onPressed: _clearFilters,
-                            child: const Text('Show all active products'),
-                          ),
-                        const SizedBox(height: 16),
-                        if (state.loading) const LinearProgressIndicator(),
-                        if (state.failure != null) ...[
-                          InlineNotice(
-                            state.failure!.displayMessage,
-                            isError: true,
-                          ),
-                          TextButton(
-                            onPressed: state.loadingMore
-                                ? null
-                                : state.products.isEmpty
-                                ? _refresh
-                                : controller.loadMore,
-                            child: const Text('Try again'),
-                          ),
-                        ],
-                        if (!state.loading &&
-                            state.failure == null &&
-                            state.products.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 32),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 36,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  state.query.search.trim().isNotEmpty
-                                      ? 'No matching products'
-                                      : state.query.archived
-                                      ? 'No archived products'
-                                      : legacyImportFailed
-                                      ? 'Older products are not available yet'
-                                      : 'No products yet',
-                                  style: theme.textTheme.titleLarge,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  state.query.search.trim().isNotEmpty
-                                      ? 'Try a different name or product code.'
-                                      : state.query.archived
-                                      ? 'Archived products will remain here with their stock history.'
-                                      : legacyImportFailed
-                                      ? 'Your local list is empty and the older cloud catalogue could not be imported. Refresh to retry; existing cloud records have not been erased.'
-                                      : 'Add your first product and its opening stock.',
-                                ),
-                                if (state.query.search.trim().isNotEmpty ||
-                                    state.query.archived) ...[
-                                  const SizedBox(height: 8),
-                                  TextButton(
-                                    onPressed: _clearFilters,
-                                    child: const Text(
-                                      'Show all active products',
+                          const SizedBox(height: 20),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: [
+                              for (final archived in [false, true])
+                                ChoiceChip(
+                                  label: Text(archived ? 'Archived' : 'All'),
+                                  selected: state.query.archived == archived,
+                                  onSelected: (_) => controller.refresh(
+                                    query: InventoryQuery(
+                                      archived: archived,
+                                      search: _search.text,
+                                      searchBy: state.query.searchBy,
                                     ),
                                   ),
-                                ] else ...[
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    profile?.localOnly == true
-                                        ? 'If you saved products while signed in, sign back into that same account. Account products are separate from this device workspace.'
-                                        : 'If you saved products using Use on this device, open that device workspace again. Products in another account stay with that account.',
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<ProductSearch>(
+                            isExpanded: true,
+                            key: ValueKey((uid, state.query.searchBy)),
+                            initialValue: state.query.searchBy,
+                            decoration: const InputDecoration(
+                              labelText: 'Search by',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: ProductSearch.name,
+                                child: Text('Product name'),
+                              ),
+                              DropdownMenuItem(
+                                value: ProductSearch.code,
+                                child: Text('Product code'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) {
+                                controller.refresh(
+                                  query: InventoryQuery(
+                                    archived: state.query.archived,
+                                    search: _search.text,
+                                    searchBy: value,
                                   ),
-                                ],
-                              ],
+                                );
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            key: const Key('inventory-search'),
+                            controller: _search,
+                            maxLength: 120,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => search(),
+                            decoration: InputDecoration(
+                              labelText: 'Starts with…',
+                              counterText: '',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: IconButton(
+                                tooltip: 'Search inventory',
+                                onPressed: search,
+                                icon: const Icon(Icons.arrow_forward_rounded),
+                              ),
                             ),
                           ),
-                      ],
+                          if ((state.query.search.trim().isNotEmpty ||
+                                  state.query.archived) &&
+                              state.products.isNotEmpty)
+                            TextButton(
+                              onPressed: _clearFilters,
+                              child: const Text('Show all active products'),
+                            ),
+                          const SizedBox(height: 16),
+                          if (state.loading) const LinearProgressIndicator(),
+                          if (state.failure != null) ...[
+                            InlineNotice(
+                              state.failure!.displayMessage,
+                              isError: true,
+                            ),
+                            TextButton(
+                              onPressed: state.loadingMore
+                                  ? null
+                                  : state.products.isEmpty
+                                  ? _refresh
+                                  : controller.loadMore,
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                          if (!state.loading &&
+                              state.failure == null &&
+                              state.products.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 32),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.inventory_2_outlined,
+                                    size: 36,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    state.query.search.trim().isNotEmpty
+                                        ? 'No matching products'
+                                        : state.query.archived
+                                        ? 'No archived products'
+                                        : legacyImportFailed
+                                        ? 'Older products are not available yet'
+                                        : 'No products yet',
+                                    style: theme.textTheme.titleLarge,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    state.query.search.trim().isNotEmpty
+                                        ? 'Try a different name or product code.'
+                                        : state.query.archived
+                                        ? 'Archived products will remain here with their stock history.'
+                                        : legacyImportFailed
+                                        ? 'Your local list is empty and the older cloud catalogue could not be imported. Refresh to retry; existing cloud records have not been erased.'
+                                        : 'Add your first product and its opening stock.',
+                                  ),
+                                  if (state.query.search.trim().isNotEmpty ||
+                                      state.query.archived) ...[
+                                    const SizedBox(height: 8),
+                                    TextButton(
+                                      onPressed: _clearFilters,
+                                      child: const Text(
+                                        'Show all active products',
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      profile?.localOnly == true
+                                          ? 'If you saved products while signed in, sign back into that same account. Account products are separate from this device workspace.'
+                                          : 'If you saved products using Use on this device, open that device workspace again. Products in another account stay with that account.',
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

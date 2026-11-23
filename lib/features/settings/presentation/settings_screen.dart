@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../app/routing/workspace_navigation.dart';
 import '../../../app/bootstrap/app_dependencies.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/storage/backup_service.dart';
@@ -41,23 +42,36 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 16),
         const Eyebrow('Business'),
         const SizedBox(height: 8),
-        _UpiSettingsForm(key: ValueKey(ref.watch(inventoryUidProvider))),
-        const SizedBox(height: 24),
-        ListTile(
-          leading: const Icon(Icons.receipt_long_outlined),
-          title: const Text('Bill preferences'),
-          subtitle: const Text(
-            'Business details, document layout and appearance',
+        HynerSurface(
+          child: _UpiSettingsForm(
+            key: ValueKey(ref.watch(inventoryUidProvider)),
           ),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () =>
-              openWorkspacePage(GoRouter.of(context), '/bill-settings'),
         ),
-        _BillFilenamePreference(key: ValueKey(ref.watch(inventoryUidProvider))),
+        const SizedBox(height: 24),
+        HynerSurface(
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('Bill preferences'),
+                subtitle: const Text(
+                  'Business details, document layout and appearance',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () =>
+                    openWorkspacePage(GoRouter.of(context), '/bill-settings'),
+              ),
+              _BillFilenamePreference(
+                key: ValueKey(ref.watch(inventoryUidProvider)),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 24),
         const Eyebrow('Appearance'),
         const SizedBox(height: 8),
-        const ThemePresetPicker(),
+        const HynerSurface(child: ThemePresetPicker()),
         const SizedBox(height: 20),
         DisclosureSection(
           title: 'App appearance',
@@ -111,15 +125,19 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 20),
         const Eyebrow('Data & device'),
         const SizedBox(height: 8),
-        DisclosureSection(
-          title: 'Notifications',
-          summary: 'Low-stock and activity alerts',
-          children: [const _NotificationSettings()],
+        HynerSurface(
+          child: DisclosureSection(
+            title: 'Notifications',
+            summary: 'Low-stock and activity alerts',
+            children: [const _NotificationSettings()],
+          ),
         ),
-        DisclosureSection(
-          title: 'Business backup',
-          summary: 'Export or restore local records',
-          children: [const _BackupExport()],
+        HynerSurface(
+          child: DisclosureSection(
+            title: 'Business backup',
+            summary: 'Export or restore local records',
+            children: [const _BackupExport()],
+          ),
         ),
         const SizedBox(height: 24),
         const Eyebrow('Help'),
@@ -142,12 +160,15 @@ class SettingsScreen extends ConsumerWidget {
         const SizedBox(height: 28),
         const Eyebrow('Account'),
         const SizedBox(height: 12),
-        ListTile(
-          leading: const Icon(Icons.person_outline_rounded),
-          title: const Text('Your profile'),
-          subtitle: const Text('Account information and sign-out'),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => openWorkspacePage(GoRouter.of(context), '/profile'),
+        HynerSurface(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.verified_user_outlined),
+            title: const Text('Your profile'),
+            subtitle: const Text('Account information and sign-out'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => openWorkspacePage(GoRouter.of(context), '/profile'),
+          ),
         ),
         const SizedBox(height: 24),
         const Divider(),
@@ -323,21 +344,17 @@ class _BackupExportState extends ConsumerState<_BackupExport> {
         'Export products, stock history, customers, sales, purchases, returns, expenses and settings as a portable backup file.',
       ),
       const SizedBox(height: 12),
-      FilledButton.icon(
+      HynerPrimaryButton(
         onPressed: _busy ? null : _export,
-        icon: _busy
-            ? const SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.file_download_outlined),
-        label: Text(_busy ? 'Preparing backup…' : 'Export business backup'),
+        icon: _busy ? null : Icons.file_download_outlined,
+        label: _busy ? 'Preparing backup…' : 'Export business backup',
+        fullWidth: false,
       ),
       const SizedBox(height: 8),
-      OutlinedButton.icon(
+      HynerSecondaryButton(
         onPressed: _busy ? null : _restore,
-        icon: const Icon(Icons.file_upload_outlined),
-        label: const Text('Restore business backup'),
+        icon: Icons.file_upload_outlined,
+        label: 'Restore business backup',
       ),
     ],
   );

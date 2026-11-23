@@ -8,7 +8,7 @@ import '../../../core/widgets/hyner_mark.dart';
 import '../../auth/presentation/session_controller.dart';
 import 'module_catalog.dart';
 
-class WorkspaceShell extends ConsumerWidget {
+class WorkspaceShell extends ConsumerStatefulWidget {
   const WorkspaceShell({
     super.key,
     required this.location,
@@ -19,23 +19,30 @@ class WorkspaceShell extends ConsumerWidget {
   final Widget child;
   final bool showAppBar;
 
+  @override
+  ConsumerState<WorkspaceShell> createState() => _WorkspaceShellState();
+}
+
+class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
+  bool _railCollapsed = false;
+
   int get _selected {
-    if (location == '/dashboard') return 0;
-    if (location.startsWith('/quickprice')) return 1;
-    if (location.startsWith('/sales')) return 2;
-    if (location.startsWith('/inventory')) return 3;
+    if (widget.location == '/dashboard') return 0;
+    if (widget.location.startsWith('/quickprice')) return 1;
+    if (widget.location.startsWith('/sales')) return 2;
+    if (widget.location.startsWith('/inventory')) return 3;
     return 4;
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final profile = ref.watch(sessionProvider).profile;
     final wide = MediaQuery.sizeOf(context).width >= 720;
-    final billEditor = location == '/sales';
+    final billEditor = widget.location == '/sales';
     final showNavigation = !billEditor;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: showAppBar
+      appBar: widget.showAppBar
           ? AppBar(
               leading: billEditor
                   ? IconButton(
@@ -94,24 +101,54 @@ class WorkspaceShell extends ConsumerWidget {
           ? null
           : Drawer(
               child: SafeArea(
-                child: _NavigationList(location: location, closeDrawer: true),
+                child: _NavigationList(
+                  location: widget.location,
+                  closeDrawer: true,
+                ),
               ),
             ),
       body: Row(
         children: [
           if (wide && showNavigation)
-            SizedBox(
-              width: 224,
+            AnimatedContainer(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: _railCollapsed ? 84 : 248,
               child: DecoratedBox(
                 decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
                   border: Border(
                     right: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                 ),
-                child: _NavigationList(location: location),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: _NavigationList(
+                        location: widget.location,
+                        compact: _railCollapsed,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _railCollapsed
+                          ? 'Expand navigation'
+                          : 'Collapse navigation',
+                      onPressed: () =>
+                          setState(() => _railCollapsed = !_railCollapsed),
+                      icon: Icon(
+                        _railCollapsed
+                            ? Icons.keyboard_double_arrow_right_rounded
+                            : Icons.keyboard_double_arrow_left_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
             ),
-          Expanded(child: child),
+          Expanded(child: widget.child),
         ],
       ),
       bottomNavigationBar: wide || !showNavigation
@@ -133,7 +170,10 @@ class WorkspaceShell extends ConsumerWidget {
                       isScrollControlled: true,
                       builder: (sheetContext) => FractionallySizedBox(
                         heightFactor: .75,
-                        child: _NavigationList(location: location, sheet: true),
+                        child: _NavigationList(
+                          location: widget.location,
+                          sheet: true,
+                        ),
                       ),
                     );
                   } else {
@@ -185,10 +225,12 @@ class _NavigationList extends StatelessWidget {
     required this.location,
     this.closeDrawer = false,
     this.sheet = false,
+    this.compact = false,
   });
   final String location;
   final bool closeDrawer;
   final bool sheet;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -199,14 +241,20 @@ class _NavigationList extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 20,
+        vertical: 20,
+      ),
       children: [
-        Text('Workspace', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 20),
+        if (!compact) ...[
+          Text('Workspace', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 20),
+        ],
         if (!sheet) ...[
-          ListTile(
-            leading: const Icon(Icons.home_outlined),
-            title: const Text('Home'),
+          _NavigationTile(
+            icon: Icons.home_outlined,
+            label: 'Home',
+            compact: compact,
             selected: location == '/dashboard',
             onTap: () => navigate('/dashboard'),
           ),
@@ -215,9 +263,10 @@ class _NavigationList extends StatelessWidget {
             ('Bill', '/sales', Icons.receipt_long_outlined),
             ('Stock', '/inventory', Icons.inventory_2_outlined),
           ])
-            ListTile(
-              leading: Icon(entry.$3),
-              title: Text(entry.$1),
+            _NavigationTile(
+              icon: entry.$3,
+              label: entry.$1,
+              compact: compact,
               selected:
                   location == entry.$2 || location.startsWith('${entry.$2}/'),
               onTap: () => navigate(entry.$2),
@@ -234,23 +283,21 @@ class _NavigationList extends StatelessWidget {
           'Insights': ['/accounting'],
           'Communication': ['/whatsapp'],
         }.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 24, bottom: 8),
-            child: Text(
-              group.key,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+          if (!compact)
+            Padding(
+              padding: const EdgeInsets.only(top: 24, bottom: 8),
+              child: Text(
+                group.key,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
           if (group.key == 'Business')
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.receipt_long_outlined, size: 22),
-              title: const Text('Bill history'),
+            _NavigationTile(
+              icon: Icons.receipt_long_outlined,
+              label: 'Bill history',
+              compact: compact,
               selected: location.startsWith('/sales/history'),
               onTap: () => navigate('/sales/history'),
             ),
@@ -259,38 +306,27 @@ class _NavigationList extends StatelessWidget {
                 group.value.contains(module.path) &&
                 !['/inventory', '/sales', '/reports'].contains(module.path),
           ))
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            _NavigationTile(
+              icon: module.icon,
+              label: module.name,
+              compact: compact,
               selected:
                   module.path == location ||
                   location.startsWith('${module.path}/'),
-              selectedTileColor: Theme.of(context).colorScheme.primaryContainer
-                  .withValues(alpha: .5),
-              leading: Icon(module.icon, size: 22),
-              title: Text(module.name),
               onTap: () => navigate(module.path),
             ),
           if (group.key == 'Insights') ...[
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.bar_chart_rounded, size: 22),
-              title: const Text('Reports'),
+            _NavigationTile(
+              icon: Icons.bar_chart_rounded,
+              label: 'Reports',
+              compact: compact,
               selected: location == '/reports',
               onTap: () => navigate('/reports'),
             ),
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.pending_actions_outlined, size: 22),
-              title: const Text('Pending payments'),
+            _NavigationTile(
+              icon: Icons.pending_actions_outlined,
+              label: 'Pending payments',
+              compact: compact,
               selected: location == '/sales/remaining',
               onTap: () => navigate('/sales/remaining'),
             ),
@@ -300,42 +336,82 @@ class _NavigationList extends StatelessWidget {
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Divider(),
         ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Preferences',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        if (!compact)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Preferences',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
-        ),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-          leading: const Icon(Icons.help_outline_rounded, size: 22),
-          title: const Text('How do I...?'),
+        _NavigationTile(
+          icon: Icons.help_outline_rounded,
+          label: 'How do I...?',
+          compact: compact,
           selected: location == '/help',
           onTap: () => navigate('/help'),
         ),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-          leading: const Icon(Icons.directions_walk_outlined, size: 22),
-          title: const Text('Take a tour'),
+        _NavigationTile(
+          icon: Icons.directions_walk_outlined,
+          label: 'Take a tour',
+          compact: compact,
           onTap: () => navigate('/getting-started'),
         ),
         for (final module in accountModules)
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            leading: Icon(module.icon, size: 22),
-            title: Text(module.name),
+          _NavigationTile(
+            icon: module.icon,
+            label: module.name,
+            compact: compact,
             onTap: () => navigate(module.path),
           ),
-        const SizedBox(height: 28),
-        Text(
-          'Hyner · Saved on this device',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
+        if (!compact) ...[
+          const SizedBox(height: 28),
+          Text(
+            'Hyner · Saved on this device',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ],
     );
+  }
+}
+
+class _NavigationTile extends StatelessWidget {
+  const _NavigationTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.compact,
+    this.selected = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool compact;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tile = ListTile(
+      dense: true,
+      minTileHeight: 52,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      contentPadding: EdgeInsets.symmetric(horizontal: compact ? 14 : 12),
+      selected: selected,
+      selectedTileColor: scheme.primaryContainer.withValues(alpha: .72),
+      leading: Icon(icon, size: 22),
+      title: compact ? null : Text(label),
+      onTap: onTap,
+    );
+    final materialTile = Material(type: MaterialType.transparency, child: tile);
+    return compact
+        ? Tooltip(message: label, child: materialTile)
+        : materialTile;
   }
 }

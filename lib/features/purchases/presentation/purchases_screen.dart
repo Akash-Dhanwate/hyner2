@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../../core/widgets/page_content.dart';
+import '../../../core/widgets/ui_primitives.dart';
 import '../../inventory/domain/product.dart';
 import '../../inventory/presentation/inventory_controller.dart';
 import '../../sales/domain/sale.dart';
@@ -43,35 +45,39 @@ class PurchasesScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     return SliverPageContent(
       onRefresh: controller.refresh,
-      header: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Eyebrow('Supplier invoices'),
-          const SizedBox(height: 12),
-          Text('Purchases', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          const Text(
-            'Record incoming stock and supplier costs. Stock updates with each saved purchase.',
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                key: const Key('new-purchase'),
-                onPressed: () => context.push<void>('/purchases/new'),
-                icon: const Icon(Icons.add_shopping_cart_rounded),
-                label: const Text('Record purchase'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _addSupplier(context, ref),
-                icon: const Icon(Icons.store_mall_directory_outlined),
-                label: const Text('Add supplier'),
-              ),
-            ],
-          ),
-        ],
+      header: HynerSurface(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Eyebrow('Supplier invoices'),
+            const SizedBox(height: 12),
+            Text('Purchases', style: theme.textTheme.headlineMedium),
+            const SizedBox(height: 8),
+            const Text(
+              'Record incoming stock and supplier costs. Stock updates with each saved purchase.',
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                HynerPrimaryButton(
+                  key: const Key('new-purchase'),
+                  onPressed: () => context.push<void>('/purchases/new'),
+                  icon: Icons.add_shopping_cart_rounded,
+                  label: 'Record purchase',
+                  fullWidth: false,
+                ),
+                HynerSecondaryButton(
+                  onPressed: () => _addSupplier(context, ref),
+                  icon: Icons.store_mall_directory_outlined,
+                  label: 'Add supplier',
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
       slivers: [
         if (state.loading)
@@ -131,10 +137,23 @@ class PurchasesScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        purchase.paymentStatus == PurchasePaymentStatus.paid
+                      HynerStatusBadge(
+                        label:
+                            purchase.paymentStatus == PurchasePaymentStatus.paid
                             ? 'Paid'
                             : 'Unpaid',
+                        icon:
+                            purchase.paymentStatus == PurchasePaymentStatus.paid
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.schedule_outlined,
+                        color:
+                            purchase.paymentStatus == PurchasePaymentStatus.paid
+                            ? Theme.of(context)
+                                  .extension<HynerStatusColors>()
+                                  ?.success
+                            : Theme.of(context)
+                                  .extension<HynerStatusColors>()
+                                  ?.warning,
                       ),
                       const Icon(Icons.chevron_right_rounded, size: 18),
                     ],
