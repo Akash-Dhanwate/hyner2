@@ -461,6 +461,64 @@ final class EstimateRepository {
         : QuickPriceEstimate.fromJson(json, businessId: workspace.businessId);
   }
 
+  Future<List<QuickPriceEstimate>> listDrafts() async {
+    await _tail;
+    final index = await workspace.values.read('estimate-draft-index');
+    final ids = (index?['ids'] as List? ?? const []).whereType<String>();
+    final drafts = <QuickPriceEstimate>[];
+    for (final id in ids) {
+      final json = await workspace.values.read('estimate-draft-$id');
+      if (json == null) continue;
+      try {
+        drafts.add(
+          QuickPriceEstimate.fromJson(json, businessId: workspace.businessId),
+        );
+      } on FormatException {
+        // Leave unreadable drafts intact for recovery by a later app version.
+      }
+    }
+    drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return drafts;
+  }
+
+  Future<void> saveDraft(QuickPriceEstimate estimate) async {
+    if (estimate.businessId != workspace.businessId || estimate.lines.isEmpty) {
+      throw ArgumentError('Add an item before saving an estimate draft.');
+    }
+    final snapshot = estimate.toJson();
+    validateWorkspaceValue(snapshot);
+    await _tail;
+    final current = await workspace.values.read('estimate-draft-index');
+    final ids = (current?['ids'] as List? ?? const [])
+        .whereType<String>()
+        .toList();
+    if (!ids.contains(estimate.id) && ids.length >= 100) {
+      throw StateError('Remove an older estimate draft before saving another.');
+    }
+    ids.remove(estimate.id);
+    ids.insert(0, estimate.id);
+    final next = _tail.then((_) async {
+      await _writer.write('estimate-draft-${estimate.id}', snapshot);
+      await _writer.write('estimate-draft-index', {'ids': ids});
+    });
+    _tail = next.catchError((Object _) {});
+    await next;
+  }
+
+  Future<void> deleteDraft(String id) async {
+    await _tail;
+    final current = await workspace.values.read('estimate-draft-index');
+    final ids =
+        (current?['ids'] as List? ?? const []).whereType<String>().toList()
+          ..remove(id);
+    final next = _tail.then((_) async {
+      await _writer.write('estimate-draft-$id', null);
+      await _writer.write('estimate-draft-index', {'ids': ids});
+    });
+    _tail = next.catchError((Object _) {});
+    await next;
+  }
+
   /// Deletes the temporary estimate so the next customer starts empty.
   Future<void> clear() async {
     await _tail;

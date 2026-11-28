@@ -28,8 +28,9 @@ class LocalAppearanceRepository implements AppearanceRepository {
   @override
   Future<ThemePreset> readPreset() async {
     final value = await _preferences.getString(_presetKey);
+    if (value == ThemePreset.sageGreen.name) return ThemePreset.blackWhite;
     return ThemePreset.values.where((p) => p.name == value).firstOrNull ??
-        ThemePreset.sageGreen;
+        ThemePreset.blackWhite;
   }
 
   @override

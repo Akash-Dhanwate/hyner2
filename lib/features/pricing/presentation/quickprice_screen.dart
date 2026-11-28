@@ -44,6 +44,7 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
   QuickPriceEstimate? estimate;
   String? estimateError, editingLineId;
   bool estimateBusy = false;
+  bool currentItemAdded = false;
   List<PricingProfileSummary> profiles = [];
   PublishedUniversalRateCard? card;
   String? profileId, error, persistenceError;
@@ -92,26 +93,8 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
 
   void _changed() {
     if (!mounted) return;
+    currentItemAdded = false;
     setState(() {});
-    if (!restoring) {
-      unawaited(
-        writer
-            .write('calculator', {...session.toJson(), 'profileId': profileId})
-            .then((_) {
-              if (mounted && persistenceError != null) {
-                setState(() => persistenceError = null);
-              }
-            })
-            .catchError((Object e) {
-              if (mounted) {
-                setState(
-                  () => persistenceError =
-                      'Your latest inputs could not be saved. ${pricingError(e)}',
-                );
-              }
-            }),
-      );
-    }
   }
 
   Future<void> _load({bool initial = false, String? selectedProfile}) async {
@@ -124,23 +107,14 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       });
     }
     try {
-      if (initial && estimate == null) {
-        try {
-          estimate = await estimateRepository.load();
-          estimateError = null;
-        } catch (e) {
-          estimateError =
-              'Your saved estimate could not be opened. ${pricingError(e)}';
-        }
+      if (initial) {
+        estimate = QuickPriceEstimate.empty(widget.workspace.businessId);
+        await widget.workspace.clearWorkingDraft();
       }
-      final saved = initial
-          ? await widget.workspace.values.read('calculator')
-          : null;
       final all = (await widget.workspace.profiles())
           .where((p) => p.status != 'archived')
           .toList();
-      final requested =
-          selectedProfile ?? profileId ?? saved?['profileId'] as String?;
+      final requested = selectedProfile ?? profileId;
       final selected =
           all.where((p) => p.id == requested).firstOrNull ??
           all.where((p) => p.status == 'published').firstOrNull ??
@@ -155,14 +129,14 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       profiles = all;
       profileId = selected?.id;
       card = next;
-      final wanted = session.product?.id ?? saved?['productId'] as String?;
+      final wanted = session.product?.id;
       final available = products;
       final product =
           available.where((p) => p.id == wanted).firstOrNull ??
           available.firstOrNull;
       if (product != null) {
         session.select(product);
-        if (saved != null) session.restore(saved);
+        if (initial) session.resetMeasurements();
       } else {
         session.product = null;
         session.result = null;
@@ -224,6 +198,40 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     await _load(selectedProfile: selected);
   }
 
+  Future<void> _editCustomerRate() async {
+    final controller = TextEditingController(
+      text: session.baseRateOverrideText ?? session.availableBaseRateText ?? '',
+    );
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Customer rate'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText:
+                'Rate per ${unitShort[session.availableBaseRateUnit] ?? session.availableBaseRateUnit}',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    session.setBaseRateOverride(value);
+  }
+
   Future<void> _retryEstimate() async {
     try {
       final saved = await estimateRepository.load();
@@ -265,6 +273,7 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       setState(() {
         estimate = next;
         editingLineId = null;
+        currentItemAdded = true;
       });
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -312,6 +321,99 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     setState(() => editingLineId = edit.id);
   }
 
+  Future<void> _openSavedEstimates() async {
+    final selected = await Navigator.of(context).push<QuickPriceEstimate>(
+      MaterialPageRoute(
+        builder: (_) => SavedEstimatesScreen(repository: estimateRepository),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      estimate = selected;
+      editingLineId = null;
+    });
+    if (selected.lines.isNotEmpty) {
+      final line = selected.lines.first;
+      await _load(selectedProfile: line.profileId);
+      if (!mounted) return;
+      final product = products
+          .where((p) => p.id == line.product.id)
+          .firstOrNull;
+      if (product != null) {
+        session.select(product);
+        session.restore(line.calculatorState);
+        setState(() => editingLineId = line.id);
+      }
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    if (session.result != null && !currentItemAdded) {
+      await _addToEstimate();
+    }
+    final active = estimate;
+    if (active == null || active.lines.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add an item before saving a draft.')),
+      );
+      return;
+    }
+    try {
+      await estimateRepository.saveDraft(active);
+      await estimateRepository.clear();
+      if (!mounted) return;
+      setState(() {
+        estimate = QuickPriceEstimate.empty(widget.workspace.businessId);
+        editingLineId = null;
+        currentItemAdded = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Estimate saved as a draft.')),
+      );
+    } catch (error) {
+      if (mounted) setState(() => estimateError = pricingError(error));
+    }
+  }
+
+  Future<void> _requestExit() async {
+    if (widget.onExit == null) return;
+    if (estimate?.lines.isNotEmpty != true && session.result == null) {
+      widget.onExit!();
+      return;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave Quick Price?'),
+        content: const Text('Save this estimate as a draft before leaving?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'stay'),
+            child: const Text('Stay'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'discard'),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: const Text('Save draft'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null || choice == 'stay') return;
+    if (choice == 'save') {
+      if (session.result != null) await _addToEstimate();
+      if (!mounted) return;
+      await _saveDraft();
+    } else {
+      await estimateRepository.clear();
+      await widget.workspace.clearWorkingDraft();
+    }
+    if (mounted) widget.onExit!();
+  }
+
   Future<void> _quotation() async {
     if (estimateBusy || widget.onQuotation == null || estimate == null) return;
     if (estimate!.lines.isEmpty || estimate!.convertedSaleId != null) {
@@ -326,6 +428,13 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
       await writer.flush();
       await estimateRepository.save(estimate!);
       await widget.onQuotation!(estimate!);
+      await estimateRepository.clear();
+      if (mounted) {
+        setState(() {
+          estimate = QuickPriceEstimate.empty(widget.workspace.businessId);
+          editingLineId = null;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => estimateError = pricingError(e));
     } finally {
@@ -406,338 +515,332 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        leading: widget.onExit == null
-            ? null
-            : BackButton(onPressed: widget.onExit),
-        title: const Text(
-          'QuickPrice',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'View estimate',
-            onPressed: estimateBusy || estimate == null ? null : _openEstimate,
-            icon: Badge(
-              label: Text('${estimate?.lines.length ?? 0}'),
-              isLabelVisible: estimate?.lines.isNotEmpty == true,
-              child: const Icon(Icons.receipt_long_outlined),
+    return PopScope<Object?>(
+      canPop: widget.onExit == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && widget.onExit != null) unawaited(_requestExit());
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: widget.onExit == null
+              ? null
+              : BackButton(onPressed: _requestExit),
+          title: const Text(
+            'QuickPrice',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Saved estimates',
+              onPressed: estimateBusy ? null : _openSavedEstimates,
+              icon: Badge(
+                label: Text('${estimate?.lines.length ?? 0}'),
+                isLabelVisible: estimate?.lines.isNotEmpty == true,
+                child: const Icon(Icons.receipt_long_outlined),
+              ),
             ),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'Calculator options',
-            onSelected: (action) {
-              switch (action) {
-                case 'save-draft':
-                  unawaited(_saveDraft());
-                  break;
-                case 'open-draft':
-                  unawaited(_openEstimate());
-                  break;
-                case 'manage':
-                  unawaited(_manage());
-                  break;
-                case 'rates':
-                  unawaited(_editRates());
-                  break;
-                case 'quotations':
-                  widget.onQuotationHistory?.call();
-                  break;
-                case 'about':
-                  unawaited(_info());
-                  break;
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'save-draft',
-                child: Text('Save current work as draft'),
-              ),
-              PopupMenuItem(
-                value: 'open-draft',
-                child: Text(
-                  'Open saved draft (${estimate?.lines.length ?? 0} items)',
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'manage',
-                child: Text('Calculators and rates'),
-              ),
-              PopupMenuItem(
-                value: 'rates',
-                child: const Text('Edit selling rates'),
-              ),
-              if (widget.onQuotationHistory != null)
+            PopupMenuButton<String>(
+              tooltip: 'Calculator options',
+              onSelected: (action) {
+                switch (action) {
+                  case 'save-draft':
+                    unawaited(_saveDraft());
+                    break;
+                  case 'open-draft':
+                    unawaited(_openSavedEstimates());
+                    break;
+                  case 'manage':
+                    unawaited(_manage());
+                    break;
+                  case 'rates':
+                    unawaited(_editRates());
+                    break;
+                  case 'quotations':
+                    widget.onQuotationHistory?.call();
+                    break;
+                  case 'about':
+                    unawaited(_info());
+                    break;
+                }
+              },
+              itemBuilder: (_) => [
                 const PopupMenuItem(
-                  value: 'quotations',
-                  child: Text('Saved quotations'),
+                  value: 'save-draft',
+                  child: Text('Save current work as draft'),
                 ),
-              const PopupMenuItem(
-                value: 'about',
-                child: Text('About this workspace'),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : error != null
-                ? _errorView()
-                : card == null || products.isEmpty
-                ? _emptyView()
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final compact =
-                          constraints.maxHeight < 520 ||
-                          MediaQuery.viewInsetsOf(context).bottom > 0 ||
-                          MediaQuery.textScalerOf(context).scale(16) > 22;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: ListView(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                              ),
-                              children: [
-                                Text(
-                                  widget.workspace.preview
-                                      ? 'Temporary browser preview'
-                                      : 'On this device',
-                                  style: TextStyle(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
+                PopupMenuItem(
+                  value: 'open-draft',
+                  child: const Text('Open estimate drafts'),
+                ),
+                const PopupMenuItem(
+                  value: 'manage',
+                  child: Text('Calculators and rates'),
+                ),
+                PopupMenuItem(
+                  value: 'rates',
+                  child: const Text('Edit selling rates'),
+                ),
+                if (widget.onQuotationHistory != null)
+                  const PopupMenuItem(
+                    value: 'quotations',
+                    child: Text('Saved quotations'),
+                  ),
+                const PopupMenuItem(
+                  value: 'about',
+                  child: Text('About this workspace'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : error != null
+                  ? _errorView()
+                  : card == null || products.isEmpty
+                  ? _emptyView()
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact =
+                            constraints.maxHeight < 520 ||
+                            MediaQuery.viewInsetsOf(context).bottom > 0 ||
+                            MediaQuery.textScalerOf(context).scale(16) > 22;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: ListView(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
                                 ),
-                                const SizedBox(height: 12),
-                                if (profiles.length > 1)
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      for (final p in profiles)
-                                        ChoiceChip(
-                                          label: Text(p.name),
-                                          selected: profileId == p.id,
-                                          onSelected: (_) =>
-                                              _load(selectedProfile: p.id),
-                                        ),
-                                    ],
-                                  )
-                                else
-                                  Text(
-                                    card!.card.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium,
-                                  ),
-                                const SizedBox(height: 18),
-                                if (products.length == 1)
-                                  Text(
-                                    products.single.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium,
-                                  )
-                                else if (products.length <= 8)
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      for (final product in products)
-                                        ChoiceChip(
-                                          label: Text(product.name),
-                                          selected:
-                                              session.product?.id == product.id,
-                                          onSelected: (_) {
-                                            HapticFeedback.selectionClick();
-                                            session.select(product);
-                                          },
-                                        ),
-                                    ],
-                                  )
-                                else
-                                  SelectField(
-                                    label: 'Product',
-                                    value: session.product?.id,
-                                    options: {
-                                      for (final p in products) p.id: p.name,
-                                    },
-                                    onChanged: (id) => session.select(
-                                      products.singleWhere((p) => p.id == id),
-                                    ),
-                                  ),
-                                const SizedBox(height: 24),
-                                if (editingLineId != null) ...[
-                                  Row(
-                                    children: [
-                                      const Expanded(
-                                        child: Text(
-                                          'Editing estimate item · current rates apply',
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => setState(
-                                          () => editingLineId = null,
-                                        ),
-                                        child: const Text('Cancel edit'),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-                                DynamicInputs(session: session),
-                                QuantityControl(session: session),
-                                if (session.availableBaseRateText != null)
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      ValueField(
-                                        key: ValueKey(
-                                          'calculation-rate-${session.product!.id}',
-                                        ),
-                                        label:
-                                            'Customer rate (${card!.card.currency.code} / ${unitShort[session.availableBaseRateUnit] ?? session.availableBaseRateUnit})',
-                                        value:
-                                            session.baseRateOverrideText ??
-                                            session.availableBaseRateText!,
-                                        numeric: true,
-                                        helper:
-                                            'Saved rate: ${session.availableBaseRateText}. Change for this item only.',
-                                        onChanged: session.setBaseRateOverride,
-                                      ),
-                                      if (session.hasBaseRateOverride)
-                                        TextButton(
-                                          onPressed:
-                                              session.resetBaseRateOverride,
-                                          child: const Text('Use saved rate'),
-                                        ),
-                                    ],
-                                  ),
-                                if (session.result != null &&
-                                    session.result!.amounts.taxMinor >
-                                        BigInt.zero) ...[
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Tax ${moneyText(session.result!.amounts.taxMinor, card!.card.currency)} · Excl. tax ${moneyText(session.result!.amounts.netMinor, card!.card.currency)}',
-                                  ),
-                                ],
-                                if (session.result != null)
-                                  for (final warning
-                                      in session.result!.warnings.toSet())
-                                    MessageLine(warning),
-                                if (estimateError != null) ...[
-                                  MessageLine(estimateError!, error: true),
-                                  if (estimate == null)
-                                    TextButton(
-                                      onPressed: _retryEstimate,
-                                      child: const Text('Retry estimate'),
-                                    ),
-                                ],
-                                if (persistenceError != null)
-                                  MessageLine(persistenceError!, error: true),
-                                const SizedBox(height: 16),
-                              ],
-                            ),
-                          ),
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight:
-                                  constraints.maxHeight *
-                                  (compact ? 0.48 : 0.43),
-                            ),
-                            child: SingleChildScrollView(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: scheme.surfaceContainerLow,
-                                  border: Border(
-                                    top: BorderSide(
-                                      color: scheme.outlineVariant,
-                                    ),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    20,
-                                    compact ? 10 : 16,
-                                    20,
-                                    12,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      PricePanel(
-                                        session: session,
-                                        compact: true,
-                                        breakdown: false,
-                                        summaryOnly: true,
-                                        title: 'Current item total',
-                                      ),
-                                      const SizedBox(height: 8),
-                                      FilledButton.icon(
-                                        key: const Key('add-to-estimate'),
-                                        onPressed:
-                                            estimateBusy ||
-                                                estimate == null ||
-                                                session.result == null
-                                            ? null
-                                            : _addToEstimate,
-                                        icon: const Icon(Icons.add_rounded),
-                                        label: Text(
-                                          editingLineId != null
-                                              ? 'Update estimate item'
-                                              : estimate?.convertedSaleId !=
-                                                    null
-                                              ? 'Add to new estimate'
-                                              : 'Add to Estimate',
-                                        ),
-                                      ),
-                                      if (estimate?.lines.isNotEmpty == true)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 6,
+                                children: [
+                                  if (profiles.length > 1)
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 6,
+                                      children: [
+                                        for (final p in profiles)
+                                          ChoiceChip(
+                                            label: Text(p.name),
+                                            selected: profileId == p.id,
+                                            onSelected: (_) =>
+                                                _load(selectedProfile: p.id),
                                           ),
-                                          child: OutlinedButton(
-                                            key: const Key('view-estimate'),
-                                            onPressed: estimateBusy
-                                                ? null
-                                                : _openEstimate,
-                                            child: Text(
-                                              '${estimate!.lines.length} items · ${moneyText(estimate!.totalMinor, estimate!.currency!)} · View estimate',
+                                      ],
+                                    ),
+                                  const SizedBox(height: 8),
+                                  if (products.length == 1)
+                                    Text(
+                                      products.single.name,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    )
+                                  else if (products.length <= 8)
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 6,
+                                      children: [
+                                        for (final product in products)
+                                          ChoiceChip(
+                                            label: Text(product.name),
+                                            selected:
+                                                session.product?.id ==
+                                                product.id,
+                                            onSelected: (_) {
+                                              HapticFeedback.selectionClick();
+                                              session.select(product);
+                                            },
+                                          ),
+                                      ],
+                                    )
+                                  else
+                                    SelectField(
+                                      label: 'Product',
+                                      value: session.product?.id,
+                                      options: {
+                                        for (final p in products) p.id: p.name,
+                                      },
+                                      onChanged: (id) => session.select(
+                                        products.singleWhere((p) => p.id == id),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 24),
+                                  if (editingLineId != null) ...[
+                                    Row(
+                                      children: [
+                                        const Expanded(
+                                          child: Text(
+                                            'Editing estimate item · current rates apply',
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => setState(
+                                            () => editingLineId = null,
+                                          ),
+                                          child: const Text('Cancel edit'),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  DynamicInputs(session: session),
+                                  QuantityControl(
+                                    session: session,
+                                    trailing:
+                                        session.availableBaseRateText == null
+                                        ? null
+                                        : OutlinedButton.icon(
+                                            key: ValueKey(
+                                              'calculation-rate-${session.product!.id}',
+                                            ),
+                                            onPressed: _editCustomerRate,
+                                            icon: const Icon(
+                                              Icons.sell_outlined,
+                                              size: 18,
+                                            ),
+                                            label: const Text('Rate'),
+                                          ),
+                                  ),
+                                  if (session.result != null &&
+                                      session.result!.amounts.taxMinor >
+                                          BigInt.zero) ...[
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Tax ${moneyText(session.result!.amounts.taxMinor, card!.card.currency)} · Excl. tax ${moneyText(session.result!.amounts.netMinor, card!.card.currency)}',
+                                    ),
+                                  ],
+                                  if (session.result != null)
+                                    for (final warning
+                                        in session.result!.warnings.toSet())
+                                      MessageLine(warning),
+                                  if (estimateError != null) ...[
+                                    MessageLine(estimateError!, error: true),
+                                    if (estimate == null)
+                                      TextButton(
+                                        onPressed: _retryEstimate,
+                                        child: const Text('Retry estimate'),
+                                      ),
+                                  ],
+                                  if (persistenceError != null)
+                                    MessageLine(persistenceError!, error: true),
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
+                            ),
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight:
+                                    constraints.maxHeight *
+                                    (compact ? 0.48 : 0.43),
+                              ),
+                              child: SingleChildScrollView(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerLow,
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: scheme.outlineVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: EdgeInsets.fromLTRB(
+                                      20,
+                                      compact ? 10 : 16,
+                                      20,
+                                      12,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        PricePanel(
+                                          session: session,
+                                          compact: true,
+                                          breakdown: false,
+                                          summaryOnly: true,
+                                          title: 'Amount total',
+                                        ),
+                                        const SizedBox(height: 8),
+                                        FilledButton.icon(
+                                          key: const Key('add-to-estimate'),
+                                          onPressed:
+                                              estimateBusy ||
+                                                  estimate == null ||
+                                                  session.result == null
+                                              ? null
+                                              : _addToEstimate,
+                                          icon: const Icon(Icons.add_rounded),
+                                          label: Text(
+                                            editingLineId != null
+                                                ? 'Update estimate item'
+                                                : estimate?.convertedSaleId !=
+                                                      null
+                                                ? 'Add to new estimate'
+                                                : 'Add to Estimate',
+                                          ),
+                                        ),
+                                        if (estimate?.lines.isNotEmpty == true)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: TextButton.icon(
+                                                    key: const Key(
+                                                      'view-estimate',
+                                                    ),
+                                                    onPressed: estimateBusy
+                                                        ? null
+                                                        : _openEstimate,
+                                                    icon: const Icon(
+                                                      Icons
+                                                          .receipt_long_outlined,
+                                                    ),
+                                                    label: Text(
+                                                      '${estimate!.lines.length} items · Estimate',
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: TextButton.icon(
+                                                    onPressed: estimateBusy
+                                                        ? null
+                                                        : _saveDraft,
+                                                    icon: const Icon(
+                                                      Icons
+                                                          .bookmark_add_outlined,
+                                                    ),
+                                                    label: const Text(
+                                                      'Save draft',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                        ),
-                                      const SizedBox(height: 8),
-                                      _secondaryActions(),
-                                    ],
+                                        const SizedBox(height: 8),
+                                        _secondaryActions(),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _saveDraft() async {
-    await writer.flush();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Draft saved. You can safely leave and resume later.'),
       ),
     );
   }

@@ -76,28 +76,25 @@ class _ActivityBarChartState extends State<ActivityBarChart> {
     final width = math.max(360.0, activity.length * 90.0 + 56);
     final maxValue = activity.fold<BigInt>(BigInt.zero, (current, point) {
       final revenue = point.revenueMinor.abs();
-      final expense = point.expenseMinor.abs();
-      final pointMax = revenue > expense ? revenue : expense;
-      return pointMax > current ? pointMax : current;
+      return revenue > current ? revenue : current;
     });
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Revenue and expenses', style: theme.textTheme.titleMedium),
+          Text('Sales trend', style: theme.textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(
             maxValue == BigInt.zero
-                ? 'No sales or purchases in this period'
-                : 'Maximum bar: ${formatBigMoney(maxValue, report.currency)}',
+                ? 'No sales in this period'
+                : 'Sales by period · ${formatBigMoney(maxValue, report.currency)} peak',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           if (activity.isNotEmpty && maxValue > BigInt.zero) ...[
             const SizedBox(height: 12),
-            const ReportLegend(),
             const SizedBox(height: 14),
             SingleChildScrollView(
               key: const Key('activity-scroll'),
@@ -109,7 +106,7 @@ class _ActivityBarChartState extends State<ActivityBarChart> {
                 child: Semantics(
                   image: true,
                   label:
-                      'Revenue and expenses. ${activity.map((p) => '${p.label}: revenue ${formatBigMoney(p.revenueMinor, report.currency)}, expenses ${formatBigMoney(p.expenseMinor, report.currency)}').join('. ')}',
+                      'Sales trend. ${activity.map((p) => '${p.label}: ${formatBigMoney(p.revenueMinor, report.currency)}').join('. ')}',
                   child: CustomPaint(
                     painter: _ActivityChartPainter(
                       activity: activity,
@@ -117,9 +114,6 @@ class _ActivityBarChartState extends State<ActivityBarChart> {
                       lineColor: theme.colorScheme.outlineVariant,
                       labelColor: theme.colorScheme.onSurfaceVariant,
                       salesColor: theme.colorScheme.primary,
-                      expenseColor:
-                          theme.extension<HynerStatusColors>()?.warning ??
-                          theme.colorScheme.tertiary,
                     ),
                   ),
                 ),
@@ -262,14 +256,13 @@ class _ActivityChartPainter extends CustomPainter {
     required this.lineColor,
     required this.labelColor,
     required this.salesColor,
-    required this.expenseColor,
   });
 
   final List<ReportActivityPoint> activity;
   final BigInt maxValue;
   final Color lineColor;
   final Color labelColor;
-  final Color salesColor, expenseColor;
+  final Color salesColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -288,44 +281,46 @@ class _ActivityChartPainter extends CustomPainter {
     }
     if (activity.isEmpty || maxValue == BigInt.zero) return;
     final slotWidth = (size.width - left - right) / activity.length;
-    final barWidth = math.min(33.0, slotWidth * .36);
     final maxDouble = maxValue.toDouble();
-    final salesPaint = Paint()..color = salesColor;
-    final expensePaint = Paint()..color = expenseColor;
+    final salesPaint = Paint()
+      ..color = salesColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fillPaint = Paint()
+      ..color = salesColor.withValues(alpha: .10)
+      ..style = PaintingStyle.fill;
+    final points = <Offset>[];
     for (var i = 0; i < activity.length; i++) {
       final point = activity[i];
       final center = left + slotWidth * (i + .5);
       final salesHeight =
           (point.revenueMinor.abs().toDouble() / maxDouble * (plotHeight - 8))
               .clamp(0.0, plotHeight - 8);
-      final expenseHeight =
-          (point.expenseMinor.abs().toDouble() / maxDouble * (plotHeight - 8))
-              .clamp(0.0, plotHeight - 8);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            center - barWidth - 1,
-            baseY - salesHeight,
-            barWidth,
-            salesHeight,
-          ),
-          const Radius.circular(3),
-        ),
-        salesPaint,
-      );
-      final expenseTop = point.expenseMinor.isNegative
-          ? baseY
-          : baseY - expenseHeight;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(center + 1, expenseTop, barWidth, expenseHeight),
-          const Radius.circular(3),
-        ),
-        expensePaint,
-      );
+      points.add(Offset(center, baseY - salesHeight));
       if (activity.length <= 8 || i % 5 == 0 || i == activity.length - 1) {
         _drawLabel(canvas, point.label, Offset(center, baseY + 10), labelColor);
       }
+    }
+    if (points.length > 1) {
+      final area = Path()..moveTo(points.first.dx, baseY);
+      area.lineTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        area.lineTo(point.dx, point.dy);
+      }
+      area.lineTo(points.last.dx, baseY);
+      area.close();
+      canvas.drawPath(area, fillPaint);
+      final line = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        line.lineTo(point.dx, point.dy);
+      }
+      canvas.drawPath(line, salesPaint);
+    }
+    final dot = Paint()..color = salesColor;
+    for (final point in points) {
+      canvas.drawCircle(point, 4, dot);
     }
   }
 
@@ -348,7 +343,7 @@ class _ActivityChartPainter extends CustomPainter {
       oldDelegate.lineColor != lineColor ||
       oldDelegate.labelColor != labelColor ||
       oldDelegate.salesColor != salesColor ||
-      oldDelegate.expenseColor != expenseColor;
+      false;
 }
 
 class _PaymentDonutPainter extends CustomPainter {

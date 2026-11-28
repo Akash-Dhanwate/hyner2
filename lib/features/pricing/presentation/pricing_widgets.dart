@@ -187,27 +187,40 @@ class DynamicInputs extends StatelessWidget {
               constraints.maxWidth >= 280 &&
               MediaQuery.textScalerOf(context).scale(16) < 21;
           final children = <Widget>[
-            if (session.availableLengthUnits.isNotEmpty) ...[
-              CheckboxListTile(
-                key: const ValueKey('use-same-unit'),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('Use the same unit'),
-                value: session.useSameUnit,
-                onChanged: (value) => session.setUseSameUnit(value ?? true),
-              ),
-              if (session.useSameUnit)
-                SelectField(
+            if (session.availableLengthUnits.isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
                   key: const ValueKey('common-length-unit'),
-                  label: 'Measurement unit',
-                  value: session.commonLengthUnit,
-                  options: {
-                    for (final unit in session.availableLengthUnits)
-                      unit: '${unitLabels[unit] ?? unit} ($unit)',
-                  },
-                  onChanged: session.changeLengthUnit,
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (context) => SafeArea(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final unit in session.availableLengthUnits)
+                            ListTile(
+                              title: Text(
+                                '${unitLabels[unit] ?? unit} ($unit)',
+                              ),
+                              trailing: session.commonLengthUnit == unit
+                                  ? const Icon(Icons.check_rounded)
+                                  : null,
+                              onTap: () {
+                                session.setUseSameUnit(true);
+                                session.changeLengthUnit(unit);
+                                Navigator.pop(context);
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.straighten_rounded, size: 18),
+                  label: Text(unitShort[session.commonLengthUnit] ?? 'Unit'),
                 ),
-            ],
+              ),
           ];
           final choiceControls = fields
               .where((f) => f.type == InputDataType.choice)
@@ -300,7 +313,7 @@ class DynamicInputs extends StatelessWidget {
               : null,
           value: entry['text'] as String,
           numeric: true,
-          large: true,
+          large: false,
           onChanged: (v) => session.change(field.id, 'text', v),
         ),
         if (entry['unit'] == 'ft_in')
@@ -342,8 +355,9 @@ class DynamicInputs extends StatelessWidget {
 }
 
 class QuantityControl extends StatelessWidget {
-  const QuantityControl({super.key, required this.session});
+  const QuantityControl({super.key, required this.session, this.trailing});
   final CalculatorSession session;
+  final Widget? trailing;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: session,
@@ -358,8 +372,9 @@ class QuantityControl extends StatelessWidget {
                 : () => session.stepQuantity(-1),
             icon: const Icon(Icons.remove),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 104,
             child: ValueField(
               key: const ValueKey('quantity'),
               label: 'Quantity',
@@ -368,7 +383,7 @@ class QuantityControl extends StatelessWidget {
               onChanged: session.changeQuantity,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 6),
           IconButton.filledTonal(
             tooltip: 'Increase quantity',
             onPressed: (int.tryParse(session.quantity) ?? 1) >= 1000000
@@ -376,6 +391,7 @@ class QuantityControl extends StatelessWidget {
                 : () => session.stepQuantity(1),
             icon: const Icon(Icons.add),
           ),
+          if (trailing != null) ...[const SizedBox(width: 6), trailing!],
         ],
       ),
     ),
@@ -402,9 +418,12 @@ class PricePanel extends StatelessWidget {
       final result = session.result;
       final scheme = Theme.of(context).colorScheme;
       if (result == null) {
-        return MessageLine(
-          session.error ?? 'Enter the product details',
-          error: true,
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            session.error ?? 'Enter the measurements to calculate a price',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         );
       }
       final currency = result.rule.currency;

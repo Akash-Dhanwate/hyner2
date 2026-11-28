@@ -6,12 +6,12 @@ export 'theme_preset.dart';
 
 /// One visual system for the business workspace and every QuickPrice entry.
 abstract final class HynerTheme {
-  static const inkGreen = Color(0xFF175C46);
+  static const inkGreen = Color(0xFF17181D);
   static const controlRadius = 10.0;
   static final _cache = <(Brightness, ThemePreset), ThemeData>{};
   static ThemeData build(
     Brightness brightness, {
-    ThemePreset preset = ThemePreset.sageGreen,
+    ThemePreset preset = ThemePreset.blackWhite,
   }) => _cache.putIfAbsent((
     brightness,
     preset,

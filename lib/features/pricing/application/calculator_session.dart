@@ -75,6 +75,23 @@ class CalculatorSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears customer-entered dimensions while preserving the selected product
+  /// and its available choice values for a fresh calculation.
+  void resetMeasurements() {
+    quantity = '1';
+    _baseRateOverride = null;
+    for (final field in visibleFields.where((field) => field.isNumeric)) {
+      final entry = entries[field.id]!;
+      entry['text'] = '';
+      entry['inches'] = '';
+      entry.remove('source');
+      entry.remove('rounded');
+    }
+    result = null;
+    error = null;
+    notifyListeners();
+  }
+
   SellingRate? get _availableBaseRate {
     final rule = product?.rule;
     if (rule == null) return null;

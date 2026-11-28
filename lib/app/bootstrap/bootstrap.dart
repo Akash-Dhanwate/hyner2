@@ -47,7 +47,7 @@ Future<AppDependencies> bootstrap() async {
   final remote = _accountServices(config);
   final appearance = LocalAppearanceRepository();
   var initialTheme = ThemeMode.system;
-  var initialPreset = ThemePreset.sageGreen;
+  var initialPreset = ThemePreset.blackWhite;
   String? notice;
   try {
     final saved = await Future.wait<Object>([

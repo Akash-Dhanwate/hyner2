@@ -27,7 +27,8 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   bool _railCollapsed = false;
 
   int get _selected {
-    if (widget.location == '/dashboard') return 0;
+    if (widget.location == '/dashboard' || widget.location == '/sales')
+      return 0;
     if (widget.location.startsWith('/quickprice')) return 1;
     if (widget.location.startsWith('/sales')) return 2;
     if (widget.location.startsWith('/inventory')) return 3;
@@ -39,7 +40,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
     final profile = ref.watch(sessionProvider).profile;
     final wide = MediaQuery.sizeOf(context).width >= 720;
     final billEditor = widget.location == '/sales';
-    final showNavigation = !billEditor;
+    const showNavigation = true;
     final theme = Theme.of(context);
     return Scaffold(
       appBar: widget.showAppBar
@@ -49,7 +50,11 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
                       tooltip: 'Back',
                       onPressed: () {
                         final router = GoRouter.of(context);
-                        if (router.canPop()) router.pop();
+                        if (router.canPop()) {
+                          router.pop();
+                        } else {
+                          openWorkspacePage(router, '/dashboard');
+                        }
                       },
                       icon: const Icon(Icons.arrow_back_rounded),
                     )

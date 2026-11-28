@@ -692,6 +692,88 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
   bool get _editable =>
       _currentAccount && _loaded && !_loading && !_saving && !_picking;
 
+  Future<void> _pickFontColor(BillTextSection section) async {
+    final existing = Color(0xff000000 | (_fontColors[section] ?? 0x19212b));
+    var hsv = HSVColor.fromColor(existing);
+    final selected = await showDialog<Color>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('${section.label} colour'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 52,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: hsv.toColor(),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Hue'),
+                ),
+                Slider(
+                  value: hsv.hue,
+                  max: 360,
+                  onChanged: (value) =>
+                      setDialogState(() => hsv = hsv.withHue(value)),
+                ),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Saturation'),
+                ),
+                Slider(
+                  value: hsv.saturation,
+                  onChanged: (value) =>
+                      setDialogState(() => hsv = hsv.withSaturation(value)),
+                ),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Brightness'),
+                ),
+                Slider(
+                  value: hsv.value,
+                  onChanged: (value) =>
+                      setDialogState(() => hsv = hsv.withValue(value)),
+                ),
+                Text(
+                  '#${hsv.toColor().toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, hsv.toColor()),
+              child: const Text('Use colour'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final value = selected.toARGB32() & 0x00ffffff;
+    setState(() {
+      _fontColors[section] = value;
+      _invalidColors.remove(section);
+      _colorFields[section]!.text =
+          '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -965,39 +1047,10 @@ class _BillSettingsFormState extends ConsumerState<_BillSettingsForm> {
               maxLength: 7,
               decoration: InputDecoration(
                 labelText: '${section.label} colour',
-                suffixIcon: PopupMenuButton<int>(
+                suffixIcon: IconButton(
                   tooltip: 'Choose ${section.label} colour',
-                  enabled: _editable,
+                  onPressed: _editable ? () => _pickFontColor(section) : null,
                   icon: const Icon(Icons.palette_outlined),
-                  itemBuilder: (_) => [
-                    for (final entry in const {
-                      0x000000: 'Black',
-                      0xc62828: 'Red',
-                      0x1565c0: 'Blue',
-                      0x2e7d32: 'Green',
-                      0x6a1b9a: 'Purple',
-                      0x64707d: 'Grey',
-                    }.entries)
-                      PopupMenuItem(
-                        value: entry.key,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              color: Color(0xff000000 | entry.key),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(entry.value),
-                          ],
-                        ),
-                      ),
-                  ],
-                  onSelected: (color) => setState(() {
-                    _fontColors[section] = color;
-                    _invalidColors.remove(section);
-                    _colorFields[section]!.text =
-                        '#${color.toRadixString(16).padLeft(6, '0').toUpperCase()}';
-                  }),
                 ),
                 hintText: '#C62828',
                 counterText: '',

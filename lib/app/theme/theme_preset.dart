@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 
 /// Colour choice is independent of the user's light/dark appearance preference.
 enum ThemePreset {
+  blackWhite(
+    'Black & White',
+    Color(0xFF17181D),
+    Color(0xFFF1F1F4),
+    Color(0xFFF5F5F8),
+    Color(0xFF18191E),
+  ),
   slateBlue(
     'Slate Blue',
     Color(0xFF45617D),

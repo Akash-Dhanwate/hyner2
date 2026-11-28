@@ -24,6 +24,86 @@ class EstimateScreen extends StatefulWidget {
   State<EstimateScreen> createState() => _EstimateScreenState();
 }
 
+class SavedEstimatesScreen extends StatefulWidget {
+  const SavedEstimatesScreen({super.key, required this.repository});
+  final EstimateRepository repository;
+
+  @override
+  State<SavedEstimatesScreen> createState() => _SavedEstimatesScreenState();
+}
+
+class _SavedEstimatesScreenState extends State<SavedEstimatesScreen> {
+  late Future<List<QuickPriceEstimate>> _drafts = widget.repository
+      .listDrafts();
+  bool _busy = false;
+
+  Future<void> _delete(QuickPriceEstimate draft) async {
+    setState(() => _busy = true);
+    try {
+      await widget.repository.deleteDraft(draft.id);
+      if (mounted) setState(() => _drafts = widget.repository.listDrafts());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('Estimates'),
+      actions: [
+        TextButton.icon(
+          onPressed: _busy
+              ? null
+              : () => Navigator.pop(
+                  context,
+                  QuickPriceEstimate.empty(
+                    widget.repository.workspace.businessId,
+                  ),
+                ),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('New'),
+        ),
+      ],
+    ),
+    body: FutureBuilder<List<QuickPriceEstimate>>(
+      future: _drafts,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final drafts = snapshot.data!;
+        if (drafts.isEmpty) {
+          return const Center(child: Text('No saved estimate drafts yet.'));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: drafts.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final draft = drafts[index];
+            final currency = draft.currency;
+            return Card(
+              child: ListTile(
+                title: Text('${draft.lines.length} items'),
+                subtitle: Text(
+                  '${draft.updatedAt.toLocal()} · ${currency == null ? 'Empty' : moneyText(draft.totalMinor, currency)}',
+                ),
+                trailing: IconButton(
+                  tooltip: 'Delete estimate draft',
+                  onPressed: _busy ? null : () => _delete(draft),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+                onTap: _busy ? null : () => Navigator.pop(context, draft),
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
 class _EstimateScreenState extends State<EstimateScreen> {
   late QuickPriceEstimate estimate = widget.estimate;
   bool busy = false;
@@ -76,6 +156,11 @@ class _EstimateScreenState extends State<EstimateScreen> {
     try {
       await widget.repository.save(estimate);
       await widget.onQuotation!(estimate);
+      await widget.repository.clear();
+      if (mounted)
+        setState(
+          () => estimate = QuickPriceEstimate.empty(estimate.businessId),
+        );
     } catch (e) {
       if (mounted) setState(() => error = pricingError(e));
     } finally {
@@ -94,6 +179,14 @@ class _EstimateScreenState extends State<EstimateScreen> {
       await widget.repository.save(estimate);
       final saleId = await widget.onCheckout!(estimate);
       if (!mounted) return;
+      if (saleId != null) {
+        await widget.repository.clear();
+        if (mounted)
+          setState(
+            () => estimate = QuickPriceEstimate.empty(estimate.businessId),
+          );
+        return;
+      }
       final saved = await widget.repository.load();
       if (!mounted) return;
       if (saved.id == estimate.id) {
