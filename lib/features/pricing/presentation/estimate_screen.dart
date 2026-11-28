@@ -157,10 +157,11 @@ class _EstimateScreenState extends State<EstimateScreen> {
       await widget.repository.save(estimate);
       await widget.onQuotation!(estimate);
       await widget.repository.clear();
-      if (mounted)
+      if (mounted) {
         setState(
           () => estimate = QuickPriceEstimate.empty(estimate.businessId),
         );
+      }
     } catch (e) {
       if (mounted) setState(() => error = pricingError(e));
     } finally {
@@ -181,10 +182,11 @@ class _EstimateScreenState extends State<EstimateScreen> {
       if (!mounted) return;
       if (saleId != null) {
         await widget.repository.clear();
-        if (mounted)
+        if (mounted) {
           setState(
             () => estimate = QuickPriceEstimate.empty(estimate.businessId),
           );
+        }
         return;
       }
       final saved = await widget.repository.load();

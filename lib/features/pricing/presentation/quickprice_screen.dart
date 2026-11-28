@@ -351,6 +351,7 @@ class _QuickPriceScreenState extends State<QuickPriceScreen>
     if (session.result != null && !currentItemAdded) {
       await _addToEstimate();
     }
+    if (!mounted) return;
     final active = estimate;
     if (active == null || active.lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

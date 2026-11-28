@@ -27,8 +27,7 @@ class _WorkspaceShellState extends ConsumerState<WorkspaceShell> {
   bool _railCollapsed = false;
 
   int get _selected {
-    if (widget.location == '/dashboard' || widget.location == '/sales')
-      return 0;
+    if (widget.location == '/dashboard') return 0;
     if (widget.location.startsWith('/quickprice')) return 1;
     if (widget.location.startsWith('/sales')) return 2;
     if (widget.location.startsWith('/inventory')) return 3;
