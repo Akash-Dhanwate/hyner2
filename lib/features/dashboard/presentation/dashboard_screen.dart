@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/routing/workspace_navigation.dart';
-import '../../../app/theme/app_theme.dart';
 import '../../../core/performance/performance_recorder.dart';
 import '../../../core/widgets/financial_amount.dart';
 import '../../../core/widgets/page_content.dart';
@@ -13,7 +12,6 @@ import '../../../core/widgets/ui_primitives.dart';
 import '../../../core/widgets/workspace_components.dart';
 import '../../auth/presentation/session_controller.dart';
 import '../../reports/domain/business_report.dart';
-import '../../reports/presentation/report_charts.dart';
 import '../../reports/presentation/reports_controller.dart';
 import '../../sales/domain/sale.dart';
 import '../../sales/presentation/sales_controller.dart';
@@ -672,7 +670,7 @@ class _RecentBillRow extends StatelessWidget {
       button: true,
       label:
           '${customer?.isNotEmpty == true ? customer : 'Walk-in customer'}, '
-          '${formatMoney(sale.draft.totalMinor, sale.draft.currency)}',
+          '${formatBigMoney(BigInt.from(sale.draft.totalMinor), sale.draft.currency)}',
       child: InkWell(
         onTap: () =>
             context.push<void>('/sales/${Uri.encodeComponent(sale.id)}'),
@@ -698,7 +696,10 @@ class _RecentBillRow extends StatelessWidget {
               const SizedBox(width: 12),
               Flexible(
                 child: FinancialAmount(
-                  formatMoney(sale.draft.totalMinor, sale.draft.currency),
+                  formatBigMoney(
+                    BigInt.from(sale.draft.totalMinor),
+                    sale.draft.currency,
+                  ),
                   compact: true,
                   textAlign: TextAlign.end,
                 ),
